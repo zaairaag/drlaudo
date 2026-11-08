@@ -4,7 +4,7 @@
 
 Aplicação fictícia de clínica, com dados de demonstração. A equipe agenda exames e publica laudos; pacientes consultam somente seus próprios agendamentos e laudos publicados.
 
-**Estado atual:** Specify/PRD aprovado; desenho técnico e plano de execução em revisão, antes da implementação. Os documentos descrevem o comportamento a construir; não comprovam execução, demo ou testes de aplicação.
+**Estado atual:** implementação frontend-first iniciada pelo contrato compartilhado (T1). A aplicação web, o mock e o backend ainda não existem; não há demo publicada. Aprovação visual/UX precede o backend.
 
 ## Enunciado e regras
 
@@ -20,7 +20,7 @@ React + TypeScript, Vite, Tailwind v4 e RTK Query. Contrato Zod compartilhado em
 
 A direção é validar o frontend antes do backend, com aprovação visual/UX explícita. Isso não dispensa autorização, concorrência e testes reais no servidor. Docker é opcional e não é exigência do desafio.
 
-Especificar e planejar não autoriza iniciar implementação ou instalar dependências.
+A Fase A está autorizada, com teste primeiro e aceite por unidade. Backend, infraestrutura e publicação exigem seus próprios gates e autorizações.
 
 ## Como ler a especificação
 
@@ -34,9 +34,24 @@ Comece pelo enunciado e pelo PRD: ele concentra as histórias, os requisitos RF/
 | [Testes](docs/TESTING.md) | Rastreabilidade RF/RN, cinco cenários obrigatórios e gates de aceite |
 | [Uso de IA](docs/AI_USAGE.md) | Histórico factual e tempo dedicado |
 
-## Execução, testes e dados de demonstração
+## Executar o contrato e suas verificações
 
-Instruções executáveis de instalação, banco, seed e testes serão documentadas após implementação e verificação. Neste momento não há comando de aplicação a executar.
+Requer Node >=22.13 (desenvolvimento em 22.22.2) e npm. O único workspace atual é `packages/contract`; ainda não há servidor/tela para abrir.
+
+```bash
+npm ci
+npm test
+npm run build
+npm run typecheck
+npm run lint
+npm run check:arch
+```
+
+`npm run dev` acompanha o build do contrato; não inicia aplicação web. O pacote ESM `@drlaudo/contract` expõe `dist/index.js` e suas declarações após o build. Esta etapa não usa variáveis de ambiente, banco ou Docker; os exemplos de ambiente entram com seus consumidores.
+
+Os schemas validam formato, normalização e estrutura de identidade. Não autenticam usuários nem comprovam autorização, concorrência ou os cinco cenários do backend.
+
+## Dados de demonstração planejados
 
 Contas fictícias planejadas para mock e seed:
 

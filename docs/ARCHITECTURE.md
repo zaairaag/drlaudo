@@ -1,7 +1,7 @@
 # Arquitetura — Dr. Laudo
 
-**Estado:** Design técnico em revisão, após o Specify aprovado em 2026-11-08; não aprovado nem implementado. [DESAFIO](DESAFIO.md) → [PRD](PRD.md) define comportamento; [API](API.md) define wire contract; [DECISIONS](DECISIONS.md) registra motivos.
-**Próximo passo:** revisão conjunta de Design/Tasks. Implementação depende da aprovação do plano e da autorização explícita do escopo; Gate A e autorização B continuam separados. Nenhum comando de aplicação foi executado.
+**Estado:** desenho adotado no plano de implementação frontend autorizado em 2026-11-08, iniciando pela T1 (contrato/tooling). [DESAFIO](DESAFIO.md) → [PRD](PRD.md) define comportamento; [API](API.md) define wire contract; [DECISIONS](DECISIONS.md) registra motivos.
+**Limite:** somente Fase A autorizada, com OK por unidade. Gate A visual/UX e autorização B continuam separados; backend e infraestrutura não foram iniciados.
 
 ## 1. Visão geral
 `React/RTK Query → /api → MSW dev-only (A) | Fastify → Prisma → PostgreSQL 16 (B/C)`. `packages/contract` fornece schemas runtime, tipos inferidos, enums, erros e funções de tempo aos três consumidores.
@@ -37,11 +37,11 @@ sequenceDiagram
 ```
 
 ### Code Reuse Analysis
-Não existe código de aplicação, manifesto, configuração de build ou teste de produto para reutilizar. Os caminhos abaixo são destinos de criação, não módulos descobertos.
+O primeiro módulo implementado é `packages/contract`, com primitivas e identidade de T1. Os destinos de web/MSW/API/E2E abaixo continuam futuros; não há aplicação anterior para migrar.
 Reuso disponível: API §§1–8 para contrato e precedências; PRD para jornadas; TESTING para padrões/oráculos; D-01…40 para decisões herdadas. Na implementação, contract é compartilhado por web/MSW/API; UI compartilha primitivas e componentes de produto. Regras de banco não são copiadas do mock.
 
 ## 2. Estrutura de diretórios
-Destinos futuros, não arquivos implementados. Node/TypeScript strict e npm workspaces; versões/engines/APIs e lockfile só na instalação autorizada, sem major de Prisma presumido.
+Estrutura incremental: somente o contrato é criado em T1; demais destinos entram com a primeira entrega real de cada camada. Node >=22.13/TypeScript strict e npm workspaces; versões/engines e lockfile da unidade constam em DECISIONS, sem major de Prisma presumido.
 | Raiz | Responsabilidade / fase |
 |---|---|
 | `packages/contract/src/`, `tests/` | A: contrato ESM compilado em `dist` com declarations; `index.ts` exporta somente API §8. `exports` aponta a `dist/index.js`/`dist/index.d.ts`. |
@@ -220,4 +220,4 @@ Testes comportamentais acompanham cada entrega, com RED real antes da implementa
 | Tempo/edição/histórico (D-16/22/26/28; DT-02/03) | Clock/IANA/calendário inteiro, DRAFT última escrita por campo enviado, reconciliação e seed sem sobrescrita; QA independente. |
 | SDK/config/banco ainda inexistentes (API §9; §11) | [verificar na execução autorizada]: versões/engines, hooks antes do parser, metadado P2002 real, migrations/locks/env. Provar em uso, sem APIs presumidas. |
 Gargalos previstos: leituras de histórico sem paginação e escritas serializadas por agendamento; são limites da demo, sem demanda medida para fila/réplica/partição/cache extra. Inesperado sanitizado não vira fallback de sucesso.
-Evidências/gates pertencem a TESTING, motivos/dívida a DECISIONS, comportamento ao PRD e HTTP à API. Baseline visual não é captura binding nem contraste homologado; nenhum check de aplicação foi realizado nesta revisão.
+Evidências/gates pertencem a TESTING, motivos/dívida a DECISIONS, comportamento ao PRD e HTTP à API. T1 implementou/verificou somente primitivas/identidade e tooling do contrato. Baseline visual não é captura binding nem contraste homologado; UI, mock e backend continuam futuros.

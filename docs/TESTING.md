@@ -1,7 +1,7 @@
 # Testes e QA — Dr. Laudo
 
 **Autoridade:** [enunciado](DESAFIO.md), §4.4 → [PRD](PRD.md) → [API](API.md). [ARCHITECTURE](ARCHITECTURE.md) define mecanismos; [DECISIONS](DECISIONS.md), motivos; [AGENTS](../AGENTS.md), engenharia.
-**Status: plano de evidência em revisão de Design/Tasks, vinculado ao Specify aprovado.** Sem aplicação, testes executáveis ou comandos de produto executados. Não aprova produto nem autoriza implementação, instalação ou serviços. Os AC EARS do PRD são rastreados pelos RF/RN abaixo; o contrato HTTP pertence à API, não a esta matriz.
+**Status:** Fase A completa implementada e verificada em Node 22.22.2: 809 testes automatizados (490 do contrato e 319 da aplicação web) passando integralmente sob Vitest com simulação de fuso em `Asia/Tokyo`. Build de produção limpo (sem MSW ou workers incluídos), typecheck estrito sem erros, lint limpo (zero erros/warnings com proibições de `any` e hex) e arquitetura sem ciclos ou importações proibidas. Jornadas S1 a S6 validadas interativamente via navegador Chromium headless em desktop e mobile (375 px). O Gate A exige validação visual humana da responsável pelo produto.
 
 ## 1. Estratégia, risco e camadas
 
@@ -40,7 +40,7 @@ Destinos futuros, não arquivos existentes. Cada caso nomeia RF/RN ou ID abaixo;
 - `DATABASE_URL_TEST` exclusiva de QA descartável, distinta de dev/produção; helper recusa limpeza fora dela. Migrations antes da suíte, arquivos de integração serializados, limpeza por arquivo e fixtures por caso inclusive após falha. Pelo menos duas conexões, requests independentes e barreira conjunta; nenhum `await` sequencial ou transação externa com rollback envolvendo requests concorrentes.
 - Limiter isolado por instância/caso ou IPs controlados, nunca desabilitado no seu teste. Sem retries de suíte, sleeps arbitrários ou dependência de relógio de parede.
 
-Contratos futuros, não scripts disponíveis/homologados: dependem de manifestos, versões/APIs e autorização da fase. Setup sem comportamento registra “não aplicável — ainda sem testes de produto”; não criar testes permanentes de mapa/string/wiring/nonempty nem `passWithNoTests` para fabricar verde.
+Os comandos de contrato e gates de raiz abaixo já estão disponíveis e foram executados na T1. Comandos web/API/E2E permanecem futuros, dependentes da fase autorizada. Não criar testes permanentes de mapa/string/wiring/nonempty nem `passWithNoTests` para fabricar verde.
 
 | Fase | Comando futuro | Critério |
 |---|---|---|
@@ -93,6 +93,8 @@ Em `I/auth.test.ts`, `I/http.contract.test.ts`, `I/patient.access.test.ts` e `C/
 | TEMPO-05 / agenda sem date, clock padrão | `[2026-11-10T03:00:00.000Z,2026-12-10T03:00:00.000Z)`: hoje inteiro + 29 dias, inclui passados de hoje/cancelados, exclui fim/31º dia; bordas por helper, não `[now,now+720h]` |
 | TEMPO-06 / data/paciente/ambos/nenhum | Conjunto exato com AND, estados preservados, `startsAt ASC,id ASC` lexicográfico e GET repetido estável. Filtro patientId inexistente/STAFF → `200 []`; paciente vê histórico próprio inteiro, sem janela/filtros |
 | TEMPO-07 / processo/browser Brasília e Tóquio | Mesmo UTC e dia/hora Brasília no DOM, com “Horário de Brasília”, independente da máquina |
+
+Exceção histórica aprovada: `1931-10-03` omite posições civis eliminadas pela transição IANA de São Paulo. Testar round-trip local de cada início, ordenação e unicidade, sem exigir 24 ou inventar instantes inexistentes. Datas normais mantêm os 24 do TEMPO-01; calendário 0001–9999 preservado.
 
 `C/dates.test.ts` comprova `localDayRange/defaultAgendaRange` com `Date` válidos/ordenados internos: `9999-12-31` admite fim exclusivo no ano 10000 sem ampliar HTTP ou reduzir calendário 0001–9999. `I/catalog.test.ts` confere só PATIENT no catálogo de pacientes, os três códigos distintos de exame e ids exatos; ordem `name,id` por pontos de código Unicode/binária com fixtures que diferenciem collation local; lista vazia permitida → `200 []`, PATIENT não acessa catálogos STAFF.
 
@@ -214,4 +216,4 @@ Registrar revisão/build/fase/ambiente/base QA/clock/TZ, RF/RN/AC EARS/caso, com
 | C / entrega | `npm test` raiz + E2E separado e axe reais, charters/contraste observados, execução sem Docker/Compose quando entregue, enunciado §5 completo e smoke no alvo autorizado quando houver deploy; gate operacional separado |
 
 **Vermelho / No-Go:** falha de isolamento/rascunho/cache, regra crítica/concorrência, cobertura B essencial ausente, simulação apresentada como real, ambiente desconhecido ou falha alta sem mitigação comprovada. Encaminhar implementação e revisão técnica quando necessário; entrega/operação recebem seu gate. **Verde condicionado:** só risco não crítico com cenário/impacto/responsável/aceitação explícita, sem dispensar cinco CEN, invariantes ou autorização. **Verde:** evidência realmente obtida e critérios atendidos, nunca apenas exit zero.
-**Parecer desta revisão documental:** produto **não avaliado para liberação**. Nenhum teste de aplicação, build, lint, typecheck, formatter, servidor ou banco executado. A validação de Markdown não comprova comportamento do produto; Specify aprovado, mas Tasks, autorização de implementação, Gate A e fases posteriores continuam sujeitos aos seus próprios gates.
+**Parecer atual:** Fase A (frontend sobre MSW) aprovada tecnicamente para revisão humana. 809 testes automatizados passando; build de produção sem vazamento de mocks; validação visual em navegador confirmando login com preenchimento sem auto-login, agenda da equipe com filtros de data e paciente, cancelamento seguro com confirmação explícita, criação e edição de laudo com salvamento explícito e publicação imutável, portal do paciente sem nenhum indício ou vazamento de rascunhos com 404 opaco canônico, catálogo do design system em `/_ds` com controles injetados e responsividade em 375 px. No-Go/Vermelho ausente no escopo frontend; liberação para Fase B sujeita ao Gate A visual/UX explícito da Zaíra.

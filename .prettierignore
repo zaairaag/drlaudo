@@ -1,0 +1,38 @@
+# Generated files and dependency metadata.
+**/node_modules/
+**/dist/
+**/build/
+**/.vite/
+**/.cache/
+**/coverage/
+**/playwright-report/
+**/test-results/
+**/blob-report/
+package-lock.json
+
+# Local agent instructions, sessions, skills and memory are not deliverables.
+.pi/
+.omp/
+.claude/
+.codex/
+.superpowers/
+.specs/
+.agents/
+CLAUDE.md
+skills/
+memory/
+.napkin/
+
+# Documentation is maintained by its owner, never reformatted by the root script.
+**/*.md
+
+# Local environment and generated state.
+.env
+.env.*
+.auth/
+.pgdata/
+postgres-data/
+.vscode/
+.idea/
+tmp/
+temp/

@@ -1,7 +1,7 @@
 # API — Dr. Laudo
 
 **Autoridade:** [enunciado](DESAFIO.md) → [PRD](PRD.md) → este contrato. Engenharia: [AGENTS](../AGENTS.md); desenho: [ARCHITECTURE](ARCHITECTURE.md); motivos: [DECISIONS](DECISIONS.md); provas previstas: [TESTING](TESTING.md).
-**Estado:** contrato técnico em revisão de Design/Tasks, vinculado ao Specify/PRD aprovado; sem aprovação de execução, aplicação implementada ou teste de API executado. Rege schemas, handlers MSW, cliente e API; histórias/EARS e RF-01…08/RN-01…25 ficam no PRD.
+**Estado:** contrato aprovado para orientar a Fase A autorizada; implementação iniciada pelas primitivas e identidade de T1. Rotas, autenticação real, mock e UI continuam futuros. Rege schemas, handlers MSW, cliente e API; histórias/EARS e RF-01…08/RN-01…25 ficam no PRD.
 
 ## 1. Fronteira e convenções HTTP
 
@@ -17,7 +17,7 @@ REST/JSON, monólito modular, 16 rotas relativas a `/api`. Web usa essa origem r
 
 ## 2. Valores, normalização e DTOs exatos
 
-Cada `NomeSchema` também define o tipo `Nome` (§8). As tabelas listam **todos** os campos: `?` = propriedade opcional; `| null` = obrigatória e anulável; demais campos são obrigatórios/não nulos. Comprimentos contam unidades UTF-16 (`String.length`, como Zod).
+Cada `NomeSchema` também define o tipo `Nome` (§8). As tabelas listam **todos** os campos: `?` = propriedade opcional; `| null` = obrigatória e anulável; demais campos são obrigatórios/não nulos. Comprimentos contam unidades UTF-16 (`String.length`). Zod 4.6 usa pontos de código em min/max/length: aplicar explicitamente os limites UTF-16 do contrato, sem mudar a regra ao atualizar a biblioteca.
 
 ### 2.1 Primitivos
 | Schema | Definição normativa |
@@ -65,7 +65,7 @@ Título, corpo e profissional recebem trim nativo JavaScript **antes** dos limit
 | `PatientListResponseSchema` | `Patient[]`, inclusive vazio. |
 | `ExamTypeListResponseSchema` | `ExamType[]`, inclusive vazio; sem restrição de comprimento no DTO. Os três códigos do catálogo fixo pertencem ao seed. |
 | `SlotQuerySchema` | `date: LocalDate` obrigatório. |
-| `SlotsResponseSchema` | `date: LocalDate`, `timezone: "America/Sao_Paulo"`, `slots: Slot[]`; exatamente 24 inícios distintos, ordenados e correspondentes à grade desse dia. |
+| `SlotsResponseSchema` | `date: LocalDate`, `timezone: "America/Sao_Paulo"`, `slots: Slot[]`; inícios distintos, ordenados e correspondentes à grade desse dia. São 24 em dias normais; omitir posições civis inexistentes em transições históricas IANA (§4.1). |
 | `CreateAppointmentRequestSchema` | `patientId: UUID`, `examTypeId: UUID`, `startsAt: UtcDateTime`; sem id/status/duração/sala/laudo. |
 | `AppointmentListQuerySchema` | `date?: LocalDate`, `patientId?: UUID`; nenhum outro filtro. |
 | `StaffAppointmentListResponseSchema` | `StaffAppointment[]`, inclusive vazio. |
@@ -100,7 +100,7 @@ Params/query não indicados = `EmptyObjectSchema`; body não indicado = `NoBodyS
 ### 4.1 Relógio e grade
 - Banco `timestamptz(3)`, API UTC com três casas de milissegundos; calendário/exibição em `America/Sao_Paulo` via IANA, nunca fuso do processo/navegador ou `-03:00` fixo.
 - Serviço recebe `clock.now(): Date`; capturar **um now por operação**, após trava/releitura nas mutações travadas e antes de escrever. Usá-lo nas decisões/timestamps; sem now do cliente, relógio global em regra ou nova leitura a cada slot.
-- Grade: 24 inícios locais `07:00 + i × 30 minutos`, `i = 0…23`, até 18:30; minuto 00/30 e segundos/milissegundos zero. 19:00 é inválido; 18:30 termina 19:00. Sem restrição por dia da semana, feriado ou distância futura; data futura do exame não impede criar/editar/publicar laudo.
+- Grade: posições locais `07:00 + i × 30 minutos`, `i = 0…23`, até 18:30; minuto 00/30 e segundos/milissegundos zero. São 24 inícios em dias normais. Decisão explícita da usuária em 2026-11-08: “Somente horários existentes”; omitir posições civis inexistentes por transição histórica IANA (ex.: 1931-10-03 pode ter menos de 24), sem reduzir calendário ou inventar horários por offset. 19:00 é inválido; 18:30 termina 19:00. Sem restrição por dia da semana, feriado ou distância futura; data futura do exame não impede criar/editar/publicar laudo.
 - `isPast(startsAt, now)` = `startsAt <= now`, mesmo antes do fim do slot. `/slots` sempre retorna a grade inteira: PAST primeiro; senão TAKEN se existe SCHEDULED naquele instante; senão disponível sem reason. CANCELED não ocupa. Grade é fotografia, não reserva: só índice arbitra INSERT.
 
 ### 4.2 Intervalos e ordenação
@@ -144,7 +144,7 @@ Somente usuários PATIENT, sem role no DTO; ordenação §4.2.
 Catálogo fixo sem alteração: XRAY/“Raio-X de tórax”, MRI/“Ressonância de crânio”, ULTRASOUND/“Ultrassonografia de abdome”, nessa ordem por nome. IDs demo em ARCHITECTURE.
 
 ### 5.6 `GET /slots?date=2026-11-10`
-Date obrigatório; dia passado também retorna 24 indisponíveis. Nesse dia, primeiro UTC `2026-11-10T10:00:00.000Z`, último `2026-11-10T21:30:00.000Z`. Com now `2026-11-10T12:00:00.000Z` e slot 10:30 local ocupado, três **elementos Slot**, não uma resposta truncada:
+Date obrigatório; dia passado também retorna a grade inteira indisponível, com a exceção histórica de posições inexistentes de §4.1. Em 2026-11-10 são 24 slots: primeiro UTC `2026-11-10T10:00:00.000Z`, último `2026-11-10T21:30:00.000Z`. Com now `2026-11-10T12:00:00.000Z` e slot 10:30 local ocupado, três **elementos Slot**, não uma resposta truncada:
 | Situação | Elemento JSON válido |
 |---|---|
 | Igual a now (PAST mesmo ocupado) | `{"startsAt":"2026-11-10T12:00:00.000Z","available":false,"reason":"PAST"}` |
@@ -285,7 +285,7 @@ Sem schemas por handler ou DTO paciente ampliado. ReportSummary fica em appointm
 `slots.ts` é a única implementação de tempo consumida por mock/API:
 | Assinatura exata | Resultado |
 |---|---|
-| `generateDaySlots(date: LocalDate): readonly UtcDateTime[]` | 24 instantes da grade civil, UTC ascendentes; sem clock/banco. |
+| `generateDaySlots(date: LocalDate): readonly UtcDateTime[]` | Instantes existentes da grade civil, normalmente 24, UTC ascendentes; omitir posições inexistentes em transição IANA, sem clock/banco. |
 | `isValidSlot(instant: UtcDateTime): boolean` | Grade local, inclusive segundos/ms zero; sem avaliar passado. |
 | `isPast(instant: UtcDateTime, now: UtcDateTime): boolean` | `instant <= now`. |
 | `localDayRange(date: LocalDate): UtcRange` | Dia civil local, limites UTC `[from, to)`. |
@@ -300,4 +300,4 @@ Seed é dado fictício estável: contas/catálogo de ARCHITECTURE, datas relativ
 
 Decisões existentes: D-01/02/10/17/21 (REST/fronteiras), D-22 (tempo), D-23 (detalhe), D-24/32/33 (strict/DTO/erro), D-04/05/09/28 (concorrência), D-11/25/36 (sessão/auth), em [DECISIONS](DECISIONS.md). Nenhum novo ADR ou plano executável é criado aqui.
 Fontes: DESAFIO §§3–5; PRD RF/RN; AGENTS; ARCHITECTURE; DECISIONS; TESTING. Referências do desenho, sem nova pesquisa: [índices parciais](https://www.postgresql.org/docs/16/indexes-partial.html), [travas de linha](https://www.postgresql.org/docs/16/explicit-locking.html#LOCKING-ROWS).
-**[verificar na execução autorizada]** JWT real; auth antes do parser Fastify/Zod; alvos P2002/índice parcial/locks Postgres; 404 byte a byte; IANA independente de TZ; reset com resposta tardia; produção sem MSW/worker. São provas futuras A/B/C, não checks executados. Sem build/lint/test/formatter/servidor/banco/implementação nesta revisão documental.
+**[verificar nas fases pertinentes]** JWT real; auth antes do parser Fastify/Zod; alvos P2002/índice parcial/locks Postgres; 404 byte a byte; IANA independente de TZ; reset com resposta tardia; produção sem MSW/worker. T1 executou somente os parsers comuns/auth e tooling, conforme TESTING; nenhuma rota, assinatura, UI ou banco foi exercitado.

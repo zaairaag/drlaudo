@@ -15,7 +15,7 @@ Este arquivo concentra as regras compartilhadas de trabalho. Adaptadores e rotei
 Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo fechado. Prazo não equivale a horas efetivamente trabalhadas. Prioridade, nesta ordem:
 **regras de negócio → segurança/autorização → testes → UX → extras.**
 
-**Limite atual:** Specify/PRD aprovado e preparação documental de Design/Tasks com `tlc-spec-driven`, não implementação. A instalação local dessa skill foi autorizada; dependências da aplicação, workspace, backend e infraestrutura continuam não autorizados. A direção é frontend first (D-21), com aprovação visual/UX antes do backend; infra e E2E vêm depois. Especificado, aprovado, implementado e verificado são estados distintos.
+**Limite atual:** em 2026-11-08, a usuária autorizou “faça todo o frontend e me de o amibeinte local pra aparovar”. Concluir T2–T20/Fase A e disponibilizar ambiente local sem pedir OK entre unidades; manter teste primeiro e gates técnicos. Também autorizou commits locais por feature (“é pra ir commietando por ft”), somente após verificação e com seleção explícita dos arquivos. Gate A visual/UX continua humano posterior. Backend/banco, infraestrutura, push e publicação exigem autorização separada.
 
 ## Leia antes de qualquer tarefa
 
@@ -31,13 +31,13 @@ Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo 
 
 ## Stack
 
-- Monorepo npm workspaces planejado. Frontend: `apps/web` e `packages/contract`; API/E2E entram depois. Node >=22 com patch compatível a confirmar quando houver implementação.
+- Monorepo npm workspaces, começando por `packages/contract` na T1. Web/API/E2E entram com seu primeiro comportamento real. Node >=22.13; desenvolvimento em 22.22.2, versões fixadas no lockfile.
 - **Contrato:** schemas Zod, tipos inferidos, enums, erros e funções puras de slots em `packages/contract`.
 - **Web, Fase A:** Vite + React + TypeScript strict + RTK Query + React Router + Tailwind v4 + shadcn/Radix. MSW apenas em desenvolvimento.
 - **API, Fase B:** Fastify + Prisma + PostgreSQL 16 + JWT + bcryptjs, reutilizando o contrato.
 - **Testes:** Fase A, Vitest/Testing Library/MSW; B, integração real com Postgres; C, Playwright/axe. Docker/CI somente na C.
 
-## Regras de código para a implementação futura
+## Regras de código
 
 - TypeScript strict, `noUncheckedIndexedAccess` e `exactOptionalPropertyTypes`; sem `any`, `@ts-ignore`, `as unknown as` ou supressões de lint.
 - Schemas HTTP, enums, ErrorCode, constantes e slots só em `packages/contract`; tipos por `z.infer`, com `z.input` quando necessário. Executar schemas nas fronteiras, não apenas importar tipos.
@@ -45,7 +45,7 @@ Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo 
 - `DomainError` e handler global usam o envelope de [API](docs/API.md#7-erros); não expor stack, senha, token ou conteúdo clínico nos logs.
 - Formulários reutilizam contrato. Estado de servidor em RTK Query; sessão/filtros não viram segunda fonte de dados.
 - JWT real, hash bcrypt e autorização são do backend. MSW e token falso servem apenas a desenvolvimento/testes de UI.
-- Sem `package.json`, não há comandos de aplicação disponíveis. Alteração só documental exige validação documental, não testes de aplicação inventados.
+- Comandos atuais: `npm test`, `npm run build`, `npm run typecheck`, `npm run lint` e `npm run check:arch`, somente para workspaces implementados. `npm run dev` ainda acompanha apenas o contrato, sem servidor/tela. Alteração só documental não justifica testes de produto inventados.
 
 ## Fluxo obrigatório
 
@@ -54,7 +54,7 @@ Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo 
 3. Implemente a menor mudança para o teste ficar verde; não antecipe backend/infra.
 4. Execute lint, typecheck, check:arch e test pertinentes à fase; em UI, rode a aplicação e observe a tela real.
 5. Atualize documentação afetada. Uma task por branch; exceção apenas para marcos agrupados explicitamente no plano, com todos os IDs rastreáveis e um aceite conjunto real. Conventional Commits, PR; nunca push direto na `main`.
-6. Quando houver execução, entregar arquivos, comandos/saídas, evidência visual quando aplicável, desvios e registro factual de IA; aguardar OK antes da próxima task ou marco autorizado. Duas falhas pelo mesmo motivo: parar e explicar. Aprovação visual é explícita, não inferida de testes verdes.
+6. Entregar arquivos, comandos/saídas, evidência visual e registro factual de IA. Na autorização atual, executar toda a Fase A sem pausas por task e submeter o frontend local à aprovação visual/UX final; testes verdes não concedem Gate A. Duas falhas pelo mesmo motivo: explicar e corrigir a causa, sem repetir cegamente.
 
 ## Especificação com TLC
 

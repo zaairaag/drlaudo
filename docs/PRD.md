@@ -1,7 +1,7 @@
 # Dr. Laudo Specification
 
 **Approved**: 2026-11-08 - user: "pode seguir"
-**Status:** Specify aprovado; Design/Tasks em revisão. Aplicação não implementada; esta aprovação permite continuar o planejamento, não executar a aplicação ou publicar.
+**Status:** Specify e plano aprovados; Fase A autorizada em 2026-11-08 com “pode começar então a implementação do plano”. Implementação iniciada pela T1 (contrato/tooling); nenhum aceite de produto ou Gate A concedido. Backend, infraestrutura e publicação continuam separados.
 **Autoridade:** [DESAFIO](DESAFIO.md) → este Specify canônico → demais documentos. RF/RN preservam identidade e alcance; [DECISIONS](DECISIONS.md) registra os motivos.
 **Ordem:** aprovação da spec/autorização → A (frontend/contrato/MSW, teto de 1,5 dia) → Gate A visual/UX explícito da responsável de produto → B (API real) → C (CI/E2E/entrega). Três dias de prazo não equivalem a horas dedicadas.
 
@@ -96,7 +96,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 6. WHEN a agenda é apresentada THEN cada item SHALL mostrar horário/paciente/exame/situação e informação de laudo exclusiva STAFF.
 7. WHEN a equipe abre novo agendamento THEN o formulário SHALL começar sem paciente/exame selecionados.
 8. WHEN a equipe informa “Data” THEN o controle SHALL aceitar dias civis 0001–9999, sem teto futuro adicional.
-9. WHEN a grade carrega THEN a tela SHALL apresentar 24 horários, de 07:00 a 18:30, com disponibilidade contratada.
+9. WHEN a grade carrega THEN a tela SHALL apresentar os horários civis existentes entre 07:00 e 18:30, normalmente 24, omitindo posições inexistentes em transições históricas IANA conforme decisão explícita “Somente horários existentes” de 2026-11-08.
 10. WHILE o slot está passado/ocupado seu controle SHALL ficar desabilitado com motivo textual acessível de TESTING §7.
 11. WHEN a data muda THEN o formulário SHALL limpar somente o horário selecionado.
 12. WHILE a grade carrega, está inválida ou em erro a tela SHALL não oferecer slot acionável.

@@ -1,0 +1,26 @@
+{
+  "name": "drlaudo",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.22.2" },
+  "workspaces": ["packages/contract", "apps/web"],
+  "scripts": {
+    "dev": "npm run build -w packages/contract && npm run dev -w apps/web",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "eslint . --max-warnings 0",
+    "check:arch": "depcruise packages/contract/src --config .dependency-cruiser.cjs",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "dependency-cruiser": "18.7.2",
+    "eslint": "10.14.0",
+    "prettier": "3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "5.1.0"
+  }
+}

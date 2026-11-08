@@ -1,6 +1,6 @@
 # Decisões — Dr. Laudo
 
-**Estado:** Specify aprovado em 2026-11-08; Design/Tasks em revisão documental, sem aprovação de execução. Autoridade: [DESAFIO](DESAFIO.md) → [PRD](PRD.md); comportamento no PRD, wire contract em [API](API.md), mecanismo em [ARCHITECTURE](ARCHITECTURE.md), provas em [TESTING](TESTING.md). D-01…40 preservam identidade e histórico; D-41 fecha o gate de aprovação nos caminhos canônicos. Dependências da aplicação seguem planejadas, não instaladas/homologadas.
+**Estado:** Specify e plano aprovados, Fase A autorizada em 2026-11-08; T1 inicia contrato/tooling. Autoridade: [DESAFIO](DESAFIO.md) → [PRD](PRD.md); comportamento no PRD, wire contract em [API](API.md), mecanismo em [ARCHITECTURE](ARCHITECTURE.md), provas em [TESTING](TESTING.md). D-01…41 preservam identidade e histórico. Dependências entram somente com uso, nas unidades autorizadas.
 
 ## Registro
 **D-01 — npm workspaces.** Um repositório/install e contrato compartilhado, sem Nx/Turborepo. A contém contract/web; API só B e E2E só C. Não criar workspaces vazios.
@@ -87,6 +87,8 @@ Atualização de estado (2026-11-08): a responsável de produto aprovou o Specif
 
 **D-41 — Aprovações nas fontes canônicas.** Manter docs/PRD.md e o plano local docs/TASKS.md, sem aliases/cópias. O --execute da skill consulta nomes fixos spec.md/tasks.md e ignora ausentes; não verifica sozinho as duas aprovações deste repositório. O harness deve conferir diretamente ambas, com data/palavras reais da usuária, além da autorização de escopo/fase. Duplicar documentos para satisfazer o gate foi descartado por criar autoridades concorrentes. Gate A e autorização B permanecem; validação documental nunca libera produto, commit ou push.
 
+**D-42 — Somente horários civis existentes.** Em 2026-11-08, a usuária escolheu “Somente horários existentes” ao resolver a contradição entre grade sempre com 24 posições, IANA e calendário 0001–9999. Transições históricas podem eliminar inícios dentro do expediente (São Paulo em 1931-10-03); omitir essas posições, mantendo 24 em dias normais e sem restringir datas. Fonte: [IANA tzdb southamerica](https://data.iana.org/time-zones/tzdb/southamerica). API/PRD e testes temporais registram a exceção; não inventar horário por offset fixo.
+
 ## Limitações e dívida técnica
 | ID | Risco / limite | Mitigação e gatilho |
 |---|---|---|
@@ -111,4 +113,8 @@ Planejadas para a aplicação; conferir versões/engines e lockfile na fase auto
 | B | fastify, @fastify/jwt, @fastify/rate-limit, fastify-type-provider-zod; HTTP/auth/limiter/integração Zod, sem sensible. |
 | B | prisma, @prisma/client, bcryptjs, pino-pretty(dev); persistência/hash/log local. |
 | C | @playwright/test, @axe-core/playwright; E2E/a11y, imagem igual à versão da biblioteca se Docker incluído. |
-Novas dependências exigem registro junto da mudança autorizada; nenhuma instalação de aplicação foi feita nesta revisão.
+
+T1 autorizada: instalar somente Zod 4.6.7, Vitest 5.1.0, TypeScript 5.9.3, ESLint 10.14.0/@eslint/js 10.0.1, typescript-eslint 8.72.1, dependency-cruiser 18.7.2, Prettier 3.9.10 e @types/node 22.20.5. Versões/engines/peers conferidos no registro npm; Node local 22.22.2 atende ao piso >=22.13 das ferramentas. TypeScript 7.0.2 está fora do peer do typescript-eslint (<6.1); usar 5.9.3. A primeira instalação avisou que ESLint 9.39.5 não tem mais suporte: substituir pelo 10 antes do gate. Vite transitivo do Vitest é ferramenta de teste, não workspace web antecipado. Zod 4.6 mede min/max/length por pontos de código, confirmado na documentação e em execução; refinamentos de String.length preservam os limites UTF-16 da API. Lockfile registra resoluções exatas; nenhum pacote de backend/UI nesta unidade.
+Novas dependências exigem registro junto da mudança autorizada. As versões da T1 acima são as primeiras instaladas; demais pacotes da tabela continuam planejados.
+
+Fase A completa autorizada em 2026-11-08: conferir/instalar dependências da tabela com uso real. npm confirmou Vite 8.3.6, React/React DOM 19.3.1, plugin-react 6.2.1, Tailwind/plugin 4.3.5, RTK 2.14.0, React Redux 9.3.1, Router 7.18.5 (manter API v7 do desenho, sem migração v8 incidental), MSW 3.0.4, date-fns 4.4.0/tz 1.5.0, Radix unificado `radix-ui` 1.8.1 (primitivas shadcn locais), Lucide 1.70.0, Sonner 2.0.8, RHF 7.91.0/resolvers 7.0.3, Testing Library React 16.3.3/user-event 14.6.8/DOM 10.4.2/jest-dom 7.0.1 e jsdom 31.0.0. Node mínimo sobe a 22.22.2 por jsdom; runtime local já atende. Fontsource Inter/Jakarta 5.3.0; SVGR 5.2.0; CVA 0.7.1/clsx 2.1.1/tailwind-merge 3.7.0/tw-animate-css 1.4.0. Engines/peers conferidos; lockfile conserva versões efetivamente consumidas. CLI shadcn 4.23.0 é referência de geração, não dependência runtime. Sem novas dependências de backend/infra.
