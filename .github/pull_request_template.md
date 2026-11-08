@@ -1,23 +1,25 @@
-**Referências:** [enunciado original](../teste-agendamento-exames-laudos.pdf) · [PRD — requisitos e regras de negócio](../docs/PRD.md) · [RULES — regras de implementação](../docs/RULES.md).
+**Autoridade:** [enunciado](../docs/DESAFIO.md) → [PRD](../docs/PRD.md). Engenharia e higiene: [AGENTS](../AGENTS.md).
 
 ## O que muda
 
 <!-- 1 a 3 frases -->
 
-**Task:** T-xx  ·  **RNs:** RN-xx
+**Task:** F-xx ou T-xx · **Fase:** 0/A/B/C · **RNs:** RN-xx
 
 ## Como testar
 
-- [ ] `npm run lint && npm run typecheck && npm test`
+- [ ] Lint, typecheck, check:arch, test e build pertinentes, com saída (ou N/A explícito em alteração só documental)
 - [ ] Passos manuais:
 
 ## Checklist
 
 - [ ] Teste escrito antes da implementação (ou justificativa)
-- [ ] Invariantes do `AGENTS.md` respeitados (rodei `/revisar`)
+- [ ] Invariantes do `AGENTS.md` revisadas; distinguir comportamento simulado de prova com backend real
 - [ ] `docs/API.md` / `docs/PRD.md` atualizados, se aplicável
 - [ ] Nova dependência registrada em `docs/DECISIONS.md`
 - [ ] Sem `any`, `@ts-ignore`, `.only`, hex solto
+- [ ] Contrato compartilhado/API.md alinhados; sem import de mocks nas telas
+- [ ] Gate/OK da task respeitado; backend/infra não antecipados
 
 ## Uso de IA
 

@@ -1,9 +1,9 @@
 # AGENTS.md — Dr. Laudo
 
 Instruções para agentes de IA (Codex, Claude Code e outros) e para humanos.
-Este arquivo é a **fonte única** de regras para agentes. `CLAUDE.md` apenas o importa.
+Este arquivo concentra as regras compartilhadas de trabalho. Adaptadores e roteiros pessoais ficam locais e não substituem estas instruções.
 
-**Fonte primária dos requisitos:** [enunciado original do desafio](teste-agendamento-exames-laudos.pdf). O [PRD](docs/PRD.md) organiza as regras de negócio; [RULES](docs/RULES.md) define as regras de implementação. Se houver divergência com o enunciado, registre e pergunte antes de implementar.
+**Autoridade:** [enunciado](docs/DESAFIO.md) → [PRD](docs/PRD.md) → demais documentos. Divergência exige pergunta, não mudança silenciosa de escopo.
 
 ## O projeto
 
@@ -12,66 +12,73 @@ Este arquivo é a **fonte única** de regras para agentes. `CLAUDE.md` apenas o 
 - A **equipe** (`STAFF`) agenda exames, cancela agendamentos, escreve laudos (rascunho) e os publica.
 - O **paciente** (`PATIENT`) consulta seus agendamentos e lê os laudos **publicados**.
 
-Desafio técnico com prazo de 3 dias e escopo fechado. Prioridade, nesta ordem:
+Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo fechado. Prazo não equivale a horas efetivamente trabalhadas. Prioridade, nesta ordem:
 **regras de negócio → segurança/autorização → testes → UX → extras.**
+
+**Limite atual:** Specify/PRD aprovado e preparação documental de Design/Tasks com `tlc-spec-driven`, não implementação. A instalação local dessa skill foi autorizada; dependências da aplicação, workspace, backend e infraestrutura continuam não autorizados. A direção é frontend first (D-21), com aprovação visual/UX antes do backend; infra e E2E vêm depois. Especificado, aprovado, implementado e verificado são estados distintos.
 
 ## Leia antes de qualquer tarefa
 
 | Documento | Papel |
 |---|---|
-| [Enunciado original (PDF)](teste-agendamento-exames-laudos.pdf) | Exigências do avaliador, inclusive tecnologias, cenários e itens de entrega. |
-| [docs/PRD.md](docs/PRD.md) | **Fonte de verdade da especificação consolidada** do comportamento (RF-xx, RN-xx), subordinada ao enunciado original. |
-| [docs/RULES.md](docs/RULES.md) | Regras de código, não negociáveis. |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Camadas, pastas, modelo de dados, fluxos. |
-| [docs/API.md](docs/API.md) | Contrato HTTP. Mudou rota ou payload, atualize no **mesmo commit**. |
-| [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Tokens, componentes, microcopy. |
-| [docs/TESTING.md](docs/TESTING.md) | Estratégia de testes, 5 cenários obrigatórios, contrato E2E. |
-| [docs/TASKS.md](docs/TASKS.md) | Tarefas com critérios de aceite. |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Decisões já tomadas. Não reabra sem motivo novo. |
-| [docs/HARNESS.md](docs/HARNESS.md) | Como guias e sensores controlam o trabalho do agente. |
-| [docs/STATUS.md](docs/STATUS.md) | O que já existe e o que ainda é planejamento. |
+| [Enunciado](docs/DESAFIO.md) | Requisitos originais preservados em texto. |
+| [PRD](docs/PRD.md) | RF/RN consolidadas e distinção entre exigências e decisões. |
+| [API](docs/API.md) | Contrato HTTP, DTOs e códigos de erro; atualizar com o contrato. |
+| [Arquitetura](docs/ARCHITECTURE.md) | Camadas, dados e fluxos planejados. |
+| [Testes](docs/TESTING.md) | Estratégia e provas dos cinco cenários obrigatórios. |
+| [Decisões](docs/DECISIONS.md) | Escolhas técnicas e dependências; não reabrir sem motivo novo. |
+| [Uso de IA](docs/AI_USAGE.md) | Registro factual e tempo dedicado, sem alegar verificações inexistentes. |
 
 ## Stack
 
-- Monorepo npm workspaces: `apps/api`, `apps/web`, `apps/e2e`. Node >= 22.
-- **API:** Fastify 5 + TypeScript strict + Zod + Prisma + PostgreSQL 16 + @fastify/jwt + bcryptjs.
-- **Web:** Vite + React + TypeScript strict + Redux Toolkit/RTK Query + React Router + Tailwind v4 + shadcn/ui.
-- **Testes:** Vitest (unitário e integração via `app.inject()` contra Postgres real em `DATABASE_URL_TEST`); Playwright + axe (E2E).
-- **Infra:** Docker Compose (dev, QA, prod com Traefik) e GitHub Actions.
+- Monorepo npm workspaces planejado. Frontend: `apps/web` e `packages/contract`; API/E2E entram depois. Node >=22 com patch compatível a confirmar quando houver implementação.
+- **Contrato:** schemas Zod, tipos inferidos, enums, erros e funções puras de slots em `packages/contract`.
+- **Web, Fase A:** Vite + React + TypeScript strict + RTK Query + React Router + Tailwind v4 + shadcn/Radix. MSW apenas em desenvolvimento.
+- **API, Fase B:** Fastify + Prisma + PostgreSQL 16 + JWT + bcryptjs, reutilizando o contrato.
+- **Testes:** Fase A, Vitest/Testing Library/MSW; B, integração real com Postgres; C, Playwright/axe. Docker/CI somente na C.
 
-## Comandos
+## Regras de código para a implementação futura
 
-```bash
-npm install
-docker compose up -d db          # só o Postgres (porta 5433)
-npm run db:setup                 # migrate + seed
-npm run dev                      # api :3333 | web :5173
-npm test                         # unitário + integração
-npm run test:e2e                 # Playwright (exige app rodando)
-npm run lint && npm run typecheck
-npm run check:arch               # dependency-cruiser
-docker compose up --build        # stack completa → http://localhost:8080
-```
+- TypeScript strict, `noUncheckedIndexedAccess` e `exactOptionalPropertyTypes`; sem `any`, `@ts-ignore`, `as unknown as` ou supressões de lint.
+- Schemas HTTP, enums, ErrorCode, constantes e slots só em `packages/contract`; tipos por `z.infer`, com `z.input` quando necessário. Executar schemas nas fronteiras, não apenas importar tipos.
+- API: routes cuidam de HTTP; services recebem `{ prisma, clock }` e não importam Fastify; domínio puro não depende de Prisma, HTTP ou features.
+- `DomainError` e handler global usam o envelope de [API](docs/API.md#7-erros); não expor stack, senha, token ou conteúdo clínico nos logs.
+- Formulários reutilizam contrato. Estado de servidor em RTK Query; sessão/filtros não viram segunda fonte de dados.
+- JWT real, hash bcrypt e autorização são do backend. MSW e token falso servem apenas a desenvolvimento/testes de UI.
+- Sem `package.json`, não há comandos de aplicação disponíveis. Alteração só documental exige validação documental, não testes de aplicação inventados.
 
 ## Fluxo obrigatório
 
-1. Identifique a task (`T-xx`) e as RNs envolvidas. Se houver conflito com o PRD, **pare e pergunte**.
-2. Escreva ou ajuste o teste **primeiro** e confirme que ele falha pelo motivo certo.
-3. Implemente a menor mudança que deixa o teste verde.
-4. Rode `npm run lint && npm run typecheck && npm test` (e `check:arch` se mexeu em imports).
-5. Atualize a documentação afetada no mesmo commit.
-6. Encerre com um resumo: o que mudou, o que foi testado, o que ficou pendente e uma sugestão de entrada para `docs/AI_USAGE.md`.
+1. Antes de implementar, conferir autorização explícita, fase e RNs; conflito com o enunciado/PRD exige pergunta.
+2. Para comportamento, escrever/ajustar teste primeiro e observar a falha correta. Pedido de regras/documentação não autoriza implementação nem instalação.
+3. Implemente a menor mudança para o teste ficar verde; não antecipe backend/infra.
+4. Execute lint, typecheck, check:arch e test pertinentes à fase; em UI, rode a aplicação e observe a tela real.
+5. Atualize documentação afetada. Uma task por branch; exceção apenas para marcos agrupados explicitamente no plano, com todos os IDs rastreáveis e um aceite conjunto real. Conventional Commits, PR; nunca push direto na `main`.
+6. Quando houver execução, entregar arquivos, comandos/saídas, evidência visual quando aplicável, desvios e registro factual de IA; aguardar OK antes da próxima task ou marco autorizado. Duas falhas pelo mesmo motivo: parar e explicar. Aprovação visual é explícita, não inferida de testes verdes.
+
+## Especificação com TLC
+
+- `docs/PRD.md` é o Specify canônico: histórias e critérios EARS, preservando RF/RN. O validador oficial aceita esse caminho; não duplicar o documento em `.specs`.
+- Antes de apresentar a revisão, executar `validate_spec.py docs/PRD.md --strict` da skill instalada. Esse gate valida Markdown, não o produto.
+- Aprovação explícita da spec precede novo Design/Tasks; aprovação do plano e autorização do escopo precedem Execute. Não inventar linhas `Approved`, provas ou comandos executados.
+- Regras nativas e deste projeto prevalecem: testes primeiro, Gate A, OK das unidades autorizadas e permissão específica para commit/push. A skill não autoriza commits automáticos nem altera modelo/provider.
+- Antes de Execute, conferir explicitamente as duas aprovações nos caminhos canônicos `docs/PRD.md` e `docs/TASKS.md`. O `--execute` da skill procura nomes fixos `spec.md`/`tasks.md` e ignora ausentes; isoladamente não valida a aprovação do nosso PRD. Não duplicar arquivos nem alterar a skill para simular esse gate.
+- Enquanto não há manifesto, uma linha `Build: none` apenas descreve a ausência de comandos. Após o primeiro bootstrap autorizado, substituí-la pelos comandos reais de build/typecheck/lint/check:arch e observar os gates antes de avançar; `none` não aprova comportamento nem entrega.
+
 
 ## Invariantes críticos (nunca quebre)
 
+As garantias de banco/transação abaixo são da API real na Fase B. MSW pode simular seus efeitos, mas não comprova essas garantias.
+
 1. **Conflito de horário** é garantido pelo índice único parcial `appointment_active_slot_unique` (`startsAt` WHERE `status = 'SCHEDULED'`). Erro Prisma `P2002` → `409 SLOT_TAKEN`. **Nunca** use "SELECT antes do INSERT" como proteção.
 2. Toda operação que envolve agendamento **e** laudo roda em `prisma.$transaction` com `SELECT ... FOR UPDATE` na linha do `Appointment`. O estado `CANCELED` + laudo `PUBLISHED` é impossível.
-3. O id do paciente vem **sempre** de `request.user.sub`. Nunca de params, query ou body.
+3. Nas operações do perfil `PATIENT`, o id do paciente vem **sempre** do usuário autenticado, nunca de params/query/body. A equipe pode selecionar `patientId` em suas rotas autorizadas; isso não altera o isolamento de `/me/*`.
 4. Recurso de outro paciente, ou laudo em rascunho, retorna `404 NOT_FOUND`, idêntico ao inexistente.
 5. A saída da API é sempre um DTO com `select` explícito. Nunca retorne entidade Prisma crua (risco de vazar `passwordHash`).
 6. Datas: `timestamptz` no banco, ISO 8601 UTC na API, exibição em `America/Sao_Paulo`. "Agora" vem de `clock.now()` (injetável), nunca de `new Date()` solto em regra de negócio.
 7. Laudo publicado é imutável.
 8. A UI do paciente não dá **nenhum** indício de que existe rascunho.
+9. Sem backend, o front chama `/api` via MSW em `apps/web/src/mocks`; nenhuma tela de produto sabe que é mock. Contrato só em `packages/contract`; mudou lá, atualize API.md no mesmo commit. Ativar MSW somente em dev com `VITE_API_MOCKING=true`; só `main.tsx`, fora de mocks, pode importar mocks. Build de produção sem mocks nem worker.
 
 ## Design
 
@@ -79,10 +86,22 @@ docker compose up --build        # stack completa → http://localhost:8080
 - Cores só por tokens semânticos. No shadcn, `accent` é hover de menu; o destaque da marca é `highlight` / `highlight-strong` / `highlight-soft`.
 - Status sempre via `statusMap` + `<StatusBadge>`. Estado nunca é transmitido só por cor.
 
+## Higiene da entrega ao avaliador
+
+- Versionar somente fontes, testes, migrations, assets necessários, manifestos/lockfile, configuração reproduzível, exemplos sanitizados de ambiente e documentação técnica útil.
+- Manter enunciado, README e regras de negócio/contrato acessíveis; README aponta só para arquivos entregues, nunca para guias ignorados.
+- Estado de IA/editor, sessões, caches, relatórios gerados, builds, bases locais e segredos ficam no `.gitignore`.
+- Roteiros pessoais de execução, comandos de harness, bibliotecas internas de instruções e receitas detalhadas de design podem ficar locais; não são documentação obrigatória do avaliador.
+- Não criar MD por sessão/fase ou duplicar status, plano e enunciado. Consolidar informação útil no documento responsável; remover relatório redundante.
+- `.gitignore` não retira arquivo já rastreado nem apaga histórico. Para excluir da entrega mantendo no disco, usar remoção somente do índice, dentro do escopo autorizado.
+- Nunca ignorar código, testes, `package-lock.json`, migrations ou `.env.example` para esconder falha/pendência. Não usar padrão genérico que exclua todos os Markdown ou imagens.
+- Antes de publicar, verificar a lista de arquivos, o comportamento das regras de ignore e os links usando somente o conjunto público. Segredo já publicado exige tratamento próprio, não só ignore.
+- Commit/push exigem autorização que cubra o escopo; nunca publicar configuração pessoal ou mudanças alheias por `git add .`.
+
 ## Proibido
 
 - `any`, `@ts-ignore`, `eslint-disable`, `.only` / `.skip` em testes.
-- Mockar o banco em testes de integração. Alterar um teste só para fazê-lo passar.
+- Mockar o banco em testes de integração da API. MSW é permitido nos testes do frontend, nunca como substituto dessa integração. Proibido enfraquecer teste para fazê-lo passar.
 - Adicionar dependência sem registrar em `docs/DECISIONS.md`.
 - Commitar `.env` ou segredos. Hex solto no JSX.
 - Usar marcas, logos ou cores de empresas reais.

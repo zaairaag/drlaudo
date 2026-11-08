@@ -1,0 +1,58 @@
+# Dependências e artefatos gerados; fontes, testes e lockfile continuam no Git.
+node_modules/
+dist/
+build/
+.vite/
+.cache/
+.eslintcache
+*.tsbuildinfo
+
+# Segredos e configuração local. Exemplos sanitizados devem ser versionados.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Relatórios, sessões de teste e bases locais.
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.auth/
+*.db
+*.sqlite
+*.sqlite3
+.pgdata/
+postgres-data/
+
+# Temporários, logs e preferências da máquina.
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+
+# Estado e adaptadores locais de ferramentas de IA.
+/.pi/
+/.omp/
+/.claude/
+/.codex/
+/.superpowers/
+/.specs/
+/.agents/
+/CLAUDE.md
+
+# Guias internos; ficam no disco, mas não na entrega do avaliador.
+/docs/RULES.md
+/docs/TASKS.md
+/docs/HARNESS.md
+/docs/DESIGN_SYSTEM.md
+
+# Relatórios de sessão não são documentação de produto.
+/docs/STATUS.md
+/docs/FASE_0.md
