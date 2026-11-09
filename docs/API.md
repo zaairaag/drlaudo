@@ -1,16 +1,16 @@
 # API — Dr. Laudo
 
 **Autoridade:** [enunciado](DESAFIO.md) → [PRD](PRD.md) → este contrato. Engenharia: [AGENTS](../AGENTS.md); desenho: [ARCHITECTURE](ARCHITECTURE.md); motivos: [DECISIONS](DECISIONS.md); provas previstas: [TESTING](TESTING.md).
-**Estado:** contrato aprovado para orientar a Fase A autorizada; implementação iniciada pelas primitivas e identidade de T1. Rotas, autenticação real, mock e UI continuam futuros. Rege schemas, handlers MSW, cliente e API; histórias/EARS e RF-01…08/RN-01…25 ficam no PRD.
+**Estado:** contrato compartilhado por API, web e testes, com complemento autorizado de administração de pacientes. O registro contém 18 rotas sobre Fastify/PostgreSQL; a evidência de implementação e execução pertence a TESTING. A web usa `/api` relativo; MSW permanece ferramenta apenas de desenvolvimento.
 
 ## 1. Fronteira e convenções HTTP
 
-REST/JSON, monólito modular, 16 rotas relativas a `/api`. Web usa essa origem relativa em todas as fases: MSW dev-only na A, API real na B/C, sem mudar telas. Fronteiras e proxies estão em ARCHITECTURE. Não há fila/evento, serviço separado, cadastro público, logout ou refresh HTTP.
+REST/JSON, monólito modular, 18 rotas relativas a `/api`. Web usa essa origem relativa em todas as fases: MSW dev-only, proxy Vite e Nginx para a API real, sem mudar telas. Não há fila/evento, serviço separado, cadastro público, logout ou refresh HTTP. Cadastro e edição administrativos são exclusivos de STAFF.
 - Toda resposta é JSON UTF-8 com `Cache-Control: no-store`, inclusive login, health e erros. Listas são arrays, inclusive `[]`; sem envelope de sucesso, `204`, paginação, ETag ou cache HTTP privado.
 - Rotas protegidas exigem um único `Authorization: Bearer <JWT>` válido; ausente/malformado/inválido/expirado → `401 UNAUTHORIZED`. Login e health são públicos e independem de token eventualmente enviado. Auth/perfil precedem até o parser (§4.3).
 - Objetos de entrada **e saída** são strict: rejeitar campos desconhecidos, não removê-los. Obrigatórios não podem ser omitidos; `null` só onde explícito. Não coagir número/booleano/array para string. Opcional ausente é omitido, nunca `""` ou `null`.
 - Params/query sem campos usam `EmptyObjectSchema`. Query plana, nomes exatos, um valor/chave: repetição mesmo com valores iguais → `DUPLICATE_QUERY`; `date[]` é desconhecida. Query desconhecida (inclusive `patientId` em `/me/*`) → `400` após auth/perfil. Sem filtros implícitos de status, busca, intervalo, sort ou paginação.
-- `NoBodySchema` exige ausência/zero bytes (`undefined` na fronteira), inclusive GETs, cancel e publish; qualquer corpo não vazio, inclusive `{}`, `null`, array ou string → `UNEXPECTED_BODY`, antes de Content-Type/JSON.
+- `NoBodySchema` exige ausência/zero bytes (`undefined` na fronteira), inclusive GETs, cancel e publish; qualquer corpo não vazio, inclusive `{}`, `null`, array ou string → `UNEXPECTED_BODY`, antes de Content-Type/JSON. O servidor pode encerrar a conexão após entregar a resposta, sem consumir indefinidamente um corpo não finalizado.
 - Rotas com corpo exigem `Content-Type: application/json`, aceitando `charset=utf-8`. Outro tipo com corpo não vazio → `INVALID_FORMAT`, `location: "body"`, `path: []`, antes de parse; JSON malformado → `INVALID_JSON`. Ausência e agregação seguem §7.1.
 - Método/rota não definido → `404 NOT_FOUND`, sem operação alternativa. Inesperado → `500 INTERNAL_ERROR`; somente health usa `503 INTERNAL_ERROR` por indisponibilidade do banco.
 - API usa `select` explícito e DTO validado, nunca entidade Prisma crua. Falha no schema de saída → `500`, não `400` do cliente nem fallback com entidade.
@@ -40,7 +40,7 @@ Título, corpo e profissional recebem trim nativo JavaScript **antes** dos limit
 |---|---|
 | `EmptyObjectSchema` | Objeto sem propriedades. |
 | `NoBodySchema` | Ausência HTTP, não objeto JSON (§1). |
-| `IdParamsSchema` | `id: UUID`; identifica agendamento ou laudo conforme a rota, sem converter recursos. |
+| `IdParamsSchema` | `id: UUID`; identifica paciente, agendamento ou laudo conforme a rota, sem converter recursos. |
 | `UserSchema` | `id: UUID`, `name: string` não vazia, `email: Email`, `role: Role`. |
 | `PatientSchema` | `id: UUID`, `name: string` não vazia, `email: Email`; somente usuário PATIENT no banco, sem role no DTO. |
 | `PatientSummarySchema` | `id: UUID`, `name: string` não vazia. |
@@ -63,6 +63,8 @@ Título, corpo e profissional recebem trim nativo JavaScript **antes** dos limit
 | `LoginResponseSchema` | `token: Token`, `user: User`; sem expiresIn, refresh token ou cookie de sessão. |
 | `JwtClaimsSchema` | `sub: UUID`, `role: Role`, `name: string` não vazia, `iss: "drlaudo-api"`, `iat: number` inteiro seguro não negativo (segundos Unix), `exp: number` inteiro seguro com `exp = iat + 28800`. Sem outros claims; payload JWT, não resposta HTTP. |
 | `PatientListResponseSchema` | `Patient[]`, inclusive vazio. |
+| `CreatePatientRequestSchema` | `name: string` 3…120 unidades UTF-16 após trim; `email: Email`; `password: string` literal com mínimo 8 unidades UTF-16 e máximo 72 bytes UTF-8. Sem id/role/hash/datas. |
+| `UpdatePatientRequestSchema` | `name?` e `email?`, mesmos limites/normalização da criação; pelo menos um campo presente. Omissão preserva valor; null, password, role e campos desconhecidos são recusados. |
 | `ExamTypeListResponseSchema` | `ExamType[]`, inclusive vazio; sem restrição de comprimento no DTO. Os três códigos do catálogo fixo pertencem ao seed. |
 | `SlotQuerySchema` | `date: LocalDate` obrigatório. |
 | `SlotsResponseSchema` | `date: LocalDate`, `timezone: "America/Sao_Paulo"`, `slots: Slot[]`; inícios distintos, ordenados e correspondentes à grade desse dia. São 24 em dias normais; omitir posições civis inexistentes em transições históricas IANA (§4.1). |
@@ -82,6 +84,8 @@ Params/query não indicados = `EmptyObjectSchema`; body não indicado = `NoBodyS
 | `POST /auth/login` | Público | Body `LoginRequestSchema` | `200 LoginResponseSchema` | 401 UNAUTHORIZED, 429 RATE_LIMITED; RF-01/RN-01 |
 | `GET /auth/me` | Ambos os roles | — | `200 UserSchema` | —; RF-02/RN-02 |
 | `GET /patients` | STAFF | — | `200 PatientListResponseSchema` | —; RF-03/RN-01/03 |
+| `POST /patients` | STAFF | Body `CreatePatientRequestSchema` | `201 PatientSchema` | 409 EMAIL_TAKEN; RF-09 |
+| `PATCH /patients/:id` | STAFF | Params `IdParamsSchema`; body `UpdatePatientRequestSchema` | `200 PatientSchema` | 404 NOT_FOUND, 409 EMAIL_TAKEN; RF-09 |
 | `GET /exam-types` | STAFF | — | `200 ExamTypeListResponseSchema` | —; RF-03/RN-05 |
 | `GET /slots` | STAFF | Query `SlotQuerySchema` | `200 SlotsResponseSchema` | —; RF-03/RN-06…10 |
 | `POST /appointments` | STAFF | Body `CreateAppointmentRequestSchema` | `201 StaffAppointmentSchema` | 404 NOT_FOUND, 422 INVALID_SLOT/PAST_DATE, 409 SLOT_TAKEN; RF-03/RN-06…10 |
@@ -139,6 +143,13 @@ Retorna User diretamente, sem wrapper/lista ou seleção de outro usuário; usu�
 
 ### 5.4 `GET /patients`
 Somente usuários PATIENT, sem role no DTO; ordenação §4.2.
+
+#### Cadastro e edição administrativos
+`POST /patients` cria sempre PATIENT, com UUID novo e bcrypt custo 10; a senha não sofre trim ou alteração. O limite de 72 bytes UTF-8 é verificado antes do hash, evitando truncamento silencioso. Retorno contém somente id/nome/e-mail; senha, hash e role não são enviados. Sem cadastro público.
+
+`PATCH /patients/:id` altera somente nome/e-mail de uma identidade PATIENT existente. ID inexistente ou de STAFF gera o mesmo 404. Preservar id, role, hash, createdAt e todos os vínculos de agendamentos/laudos. PATCH vazio gera EMPTY_PATCH; o formato é validado antes da existência.
+
+E-mail é único entre todas as contas. Conflito real de `User.email` na criação/edição gera `409 EMAIL_TAKEN`; não sobrescrever a conta concorrente nem classificar outra falha Prisma como esse conflito. DTO é validado ainda na transação antes do commit. Listas e seletores recebem os valores atualizados.
 
 ### 5.5 `GET /exam-types`
 Catálogo fixo sem alteração: XRAY/“Raio-X de tórax”, MRI/“Ressonância de crânio”, ULTRASOUND/“Ultrassonografia de abdome”, nessa ordem por nome. IDs demo em ARCHITECTURE.
@@ -205,13 +216,13 @@ Segredos JWT/URLs de banco são externos; repositório só nomes/exemplos saniti
 ### 6.3 Sessão e cache no frontend
 - Persistir só LoginResponse em localStorage `drlaudo.session`, não RTK Query/listas/laudos/formulários clínicos. Logout local apaga sessão; sem endpoint/revogação, JWT continua válido até 8 h. No F5 validar estrutura + `/auth/me` antes de telas/consultas privadas; decode sub/role é UX, não autorização.
 - Inválida/expirada ou 401: limpar/ir ao login. Rede/500 ao validar sessão: erro com retry, sem dados privados antigos ou supor login válido. Logout/troca/substituição de sessão/evento storage: abortar/ignorar requests anteriores, limpar seleção/filtros/formulários, `api.util.resetApiState()`; resposta tardia não repovoa cache/tela, nem cache STAFF atende portal.
-- Tags exatas: `Appointment`, `Slot`, `Report`, `MyAppointment`. Criar/cancelar invalida listas/detalhes Appointment e Slot; criar/editar/publicar invalida Report e Appointment correspondente; publicar também MyAppointment na sessão que o possuir. Matriz/implementação em ARCHITECTURE; sem polling/notificação entre atores, paciente usa leitura/refetch normal.
+- Tags: `Appointment`, `Slot`, `Report`, `MyAppointment` e `Patient`. Criar/cancelar invalida listas/detalhes Appointment e Slot; criar/editar/publicar invalida Report e Appointment correspondente; publicar também MyAppointment na sessão que o possuir. Criar/editar paciente invalida Patient e os dados de agendamentos que exibem seu nome. Eventos reais de foco/reconexão estão ligados ao store; sem polling/notificação entre atores.
 - SLOT_TAKEN: refazer slots/agenda, manter paciente/exame/data, limpar só slot perdido. Conflitos de laudo/cancelamento: refazer detalhe/laudo, preservar texto não salvo em memória e mostrar estado atual/bloqueado, sem reenvio/sobrescrita automática. Transporte não apaga formulário; jornada em PRD.
 - Paciente 404 mostra `Não encontramos este registro`; trocar id limpa visualização anterior antes da leitura. Schema de resposta inválido é indisponibilidade, nunca vazio/sucesso/autorização.
 
 ## 7. Erros
 
-`ErrorCodeSchema` / `ErrorCode`: **somente 13 códigos** abaixo. Envelope strict `{"error": ...}`, message canônica sem interpolação. Só VALIDATION_ERROR tem details não vazios; demais **omitem** details (não null/array/objeto vazio). Sem requestId/data/causa/stack/recurso no corpo.
+`ErrorCodeSchema` / `ErrorCode`: **somente 14 códigos** abaixo. Envelope strict `{"error": ...}`, message canônica sem interpolação. Só VALIDATION_ERROR tem details não vazios; demais **omitem** details (não null/array/objeto vazio). Sem requestId/data/causa/stack/recurso no corpo.
 | Status | Code | Message canônica | Condição |
 |---|---|---|---|
 | 400 | `VALIDATION_ERROR` | `Os dados informados são inválidos.` | Entrada inválida, com details. |
@@ -219,6 +230,7 @@ Segredos JWT/URLs de banco são externos; repositório só nomes/exemplos saniti
 | 403 | `FORBIDDEN` | `Você não tem permissão para esta ação.` | Role não autorizado. |
 | 404 | `NOT_FOUND` | `Não encontramos este registro` | Ausente/indisponível, inclusive quatro casos opacos. |
 | 409 | `SLOT_TAKEN` | `Este horário acabou de ser ocupado.` | Índice de slot ativo. |
+| 409 | `EMAIL_TAKEN` | `Este e-mail já está cadastrado.` | Unique de e-mail na administração de pacientes. |
 | 409 | `REPORT_EXISTS` | `Este agendamento já possui um laudo.` | Laudo único existente. |
 | 409 | `REPORT_LOCKED` | `Este laudo foi publicado e não pode ser alterado.` | Editar/republicar publicado. |
 | 409 | `CANNOT_CANCEL` | `Este agendamento não pode ser cancelado.` | Cancelado ou com publicado. |
@@ -257,18 +269,18 @@ Exemplo completo de resposta ao PATCH `{}`:
 {"error":{"code":"VALIDATION_ERROR","message":"Os dados informados são inválidos.","details":[{"location":"body","path":[],"rule":"EMPTY_PATCH","message":"Informe ao menos um campo."}]}}
 ```
 
-## 8. Exports de `packages/contract` e implementação futura
+## 8. Exports de `packages/contract`
 
 Única superfície pública: `packages/contract/src/index.ts`; exportar cada schema e tipo sem sufixo Schema, derivado de `z.infer<typeof NomeSchema>`, sem interfaces HTTP paralelas. Formulários usam `z.input<typeof CreateReportRequestSchema>`, `z.input<typeof UpdateReportRequestSchema>` ou `z.input<typeof LoginRequestSchema>` quando distinguirem entrada/transformação.
 
 ### 8.1 Inventário fechado de schemas/tipos
-45 schemas/tipos; caminhos relativos a `packages/contract/src/`:
+47 schemas/tipos; caminhos relativos a `packages/contract/src/`:
 | Arquivo | Schemas exportados |
 |---|---|
 | `enums.ts` | `RoleSchema`, `AppointmentStatusSchema`, `ReportStatusSchema`, `ExamTypeCodeSchema`, `SlotUnavailableReasonSchema` |
 | `schemas/common.ts` | `UUIDSchema`, `UtcDateTimeSchema`, `LocalDateSchema`, `EmailSchema`, `TokenSchema`, `EmptyObjectSchema`, `NoBodySchema`, `IdParamsSchema`, `UtcRangeSchema` |
 | `schemas/auth.ts` | `UserSchema`, `LoginRequestSchema`, `LoginResponseSchema`, `JwtClaimsSchema` |
-| `schemas/patients.ts` | `PatientSchema`, `PatientSummarySchema`, `PatientListResponseSchema` |
+| `schemas/patients.ts` | `PatientSchema`, `PatientSummarySchema`, `PatientListResponseSchema`, `CreatePatientRequestSchema`, `UpdatePatientRequestSchema` |
 | `schemas/exam-types.ts` | `ExamTypeSchema`, `ExamTypeSummarySchema`, `ExamTypeNameSchema`, `ExamTypeListResponseSchema` |
 | `schemas/slots.ts` | `SlotSchema`, `SlotQuerySchema`, `SlotsResponseSchema` |
 | `schemas/appointments.ts` | `ReportSummarySchema`, `StaffAppointmentSchema`, `CreateAppointmentRequestSchema`, `AppointmentListQuerySchema`, `StaffAppointmentListResponseSchema` |
@@ -293,11 +305,11 @@ Sem schemas por handler ou DTO paciente ampliado. ReportSummary fica em appointm
 Entradas já validadas, sem arredondamento de inválidos, dependência de `process.env.TZ` ou relógio global. Services fornecem now via `clock.now().toISOString()`; disponibilidade combina ocupação com a precedência §4.1.
 
 ### 8.3 Ordem de construção e evidência exigida
-Sequência/gates e componentes permanecem em PRD/ARCHITECTURE/TESTING/DECISIONS: contrato e schemas/tempo → mock + web A → aprovação visual/UX explícita → API B → integração/E2E C. Executar schemas nas fronteiras de entrada/saída; services recebem `{ prisma, clock }`, sem Fastify. Nenhuma etapa está autorizada/executada por este documento.
+O fluxo técnico é contrato → consumidores → provas de integração e E2E reais. Executar schemas nas fronteiras; mutações validam DTOs dentro da transação antes do commit. Services recebem `{ prisma, clock }`, sem Fastify. Aprovações humanas e publicação não são concedidas por este documento.
 Seed é dado fictício estável: contas/catálogo de ARCHITECTURE, datas relativas só no primeiro create; upsert por UUID com update vazio preserva horários, cancelamentos, textos, senha e publishedAt existentes. Não resetar no boot. QA cria massa isolada/clock fixo, não usa exemplos/estado mutável da demo; procedimento nos documentos responsáveis.
 
 ## 9. Registro de decisões e limites da evidência
 
 Decisões existentes: D-01/02/10/17/21 (REST/fronteiras), D-22 (tempo), D-23 (detalhe), D-24/32/33 (strict/DTO/erro), D-04/05/09/28 (concorrência), D-11/25/36 (sessão/auth), em [DECISIONS](DECISIONS.md). Nenhum novo ADR ou plano executável é criado aqui.
 Fontes: DESAFIO §§3–5; PRD RF/RN; AGENTS; ARCHITECTURE; DECISIONS; TESTING. Referências do desenho, sem nova pesquisa: [índices parciais](https://www.postgresql.org/docs/16/indexes-partial.html), [travas de linha](https://www.postgresql.org/docs/16/explicit-locking.html#LOCKING-ROWS).
-**[verificar nas fases pertinentes]** JWT real; auth antes do parser Fastify/Zod; alvos P2002/índice parcial/locks Postgres; 404 byte a byte; IANA independente de TZ; reset com resposta tardia; produção sem MSW/worker. T1 executou somente os parsers comuns/auth e tooling, conforme TESTING; nenhuma rota, assinatura, UI ou banco foi exercitado.
+As provas atuais e suas limitações estão em TESTING. JWT, autorização direta, alvo QA, índices/locks, isolamento, build de produção e jornadas reais precisam ser verificados na entrega; registros históricos de uma etapa não substituem esse gate.

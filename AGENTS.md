@@ -9,13 +9,13 @@ Este arquivo concentra as regras compartilhadas de trabalho. Adaptadores e rotei
 
 **Dr. Laudo** é uma aplicação web para uma clínica de exames fictícia:
 
-- A **equipe** (`STAFF`) agenda exames, cancela agendamentos, escreve laudos (rascunho) e os publica.
+- A **equipe** (`STAFF`) cadastra/edita pacientes, agenda exames, cancela agendamentos, escreve laudos (rascunho) e os publica.
 - O **paciente** (`PATIENT`) consulta seus agendamentos e lê os laudos **publicados**.
 
 Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo fechado. Prazo não equivale a horas efetivamente trabalhadas. Prioridade, nesta ordem:
 **regras de negócio → segurança/autorização → testes → UX → extras.**
 
-**Limite atual:** em 2026-11-08, a usuária autorizou “faça todo o frontend e me de o amibeinte local pra aparovar”. Concluir T2–T20/Fase A e disponibilizar ambiente local sem pedir OK entre unidades; manter teste primeiro e gates técnicos. Também autorizou commits locais por feature (“é pra ir commietando por ft”), somente após verificação e com seleção explícita dos arquivos. Gate A visual/UX continua humano posterior. Backend/banco, infraestrutura, push e publicação exigem autorização separada.
+**Limite atual:** o frontend foi autorizado em 2026-11-08 (“faça todo o frontend e me de o amibeinte local pra aparovar”), seguido de backend/banco/empacotamento (“implemente tudo agora negao”). Em 2026-11-09, “corrija tudo e deixe pronto para entrega” autoriza corrigir os achados da auditoria, incluir a administração de pacientes já decidida e concluir as provas técnicas locais. Sem pausas por unidade; manter teste primeiro e gates. A autorização anterior de commits locais por feature cobre aquele escopo, não permite incluir mudanças alheias. Gate A visual/UX continua humano; push, deploy e dados clínicos reais não estão autorizados.
 
 ## Leia antes de qualquer tarefa
 
@@ -31,7 +31,7 @@ Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo 
 
 ## Stack
 
-- Monorepo npm workspaces, começando por `packages/contract` na T1. Web/API/E2E entram com seu primeiro comportamento real. Node >=22.13; desenvolvimento em 22.22.2, versões fixadas no lockfile.
+- Monorepo npm workspaces: `packages/contract`, `apps/api`, `apps/web` e `apps/e2e`. Node >=22.22.2; versões fixadas no lockfile. Contrato compilado precede os consumidores também em instalação limpa.
 - **Contrato:** schemas Zod, tipos inferidos, enums, erros e funções puras de slots em `packages/contract`.
 - **Web, Fase A:** Vite + React + TypeScript strict + RTK Query + React Router + Tailwind v4 + shadcn/Radix. MSW apenas em desenvolvimento.
 - **API, Fase B:** Fastify + Prisma + PostgreSQL 16 + JWT + bcryptjs, reutilizando o contrato.
@@ -45,16 +45,16 @@ Desafio técnico com prazo de entrega de 3 dias, conforme o enunciado, e escopo 
 - `DomainError` e handler global usam o envelope de [API](docs/API.md#7-erros); não expor stack, senha, token ou conteúdo clínico nos logs.
 - Formulários reutilizam contrato. Estado de servidor em RTK Query; sessão/filtros não viram segunda fonte de dados.
 - JWT real, hash bcrypt e autorização são do backend. MSW e token falso servem apenas a desenvolvimento/testes de UI.
-- Comandos atuais: `npm test`, `npm run build`, `npm run typecheck`, `npm run lint` e `npm run check:arch`, somente para workspaces implementados. `npm run dev` ainda acompanha apenas o contrato, sem servidor/tela. Alteração só documental não justifica testes de produto inventados.
+- Comandos: `npm run dev` sobe API/web reais; `npm test` agrega contrato, integração PostgreSQL e componentes web; `npm run test:e2e` executa Playwright separado. Gates: `npm run build`, `npm run typecheck`, `npm run lint` e `npm run check:arch` nas camadas implementadas. Alteração só documental não justifica testes de produto inventados.
 
 ## Fluxo obrigatório
 
 1. Antes de implementar, conferir autorização explícita, fase e RNs; conflito com o enunciado/PRD exige pergunta.
 2. Para comportamento, escrever/ajustar teste primeiro e observar a falha correta. Pedido de regras/documentação não autoriza implementação nem instalação.
-3. Implemente a menor mudança para o teste ficar verde; não antecipe backend/infra.
+3. Implemente a menor mudança que deixa o teste verde, dentro do escopo explicitamente autorizado.
 4. Execute lint, typecheck, check:arch e test pertinentes à fase; em UI, rode a aplicação e observe a tela real.
 5. Atualize documentação afetada. Uma task por branch; exceção apenas para marcos agrupados explicitamente no plano, com todos os IDs rastreáveis e um aceite conjunto real. Conventional Commits, PR; nunca push direto na `main`.
-6. Entregar arquivos, comandos/saídas, evidência visual e registro factual de IA. Na autorização atual, executar toda a Fase A sem pausas por task e submeter o frontend local à aprovação visual/UX final; testes verdes não concedem Gate A. Duas falhas pelo mesmo motivo: explicar e corrigir a causa, sem repetir cegamente.
+6. Entregar arquivos, comandos/saídas, evidência visual e registro factual de IA. Na autorização atual, concluir as correções ponta a ponta e disponibilizar ambiente local real para aprovação visual/UX final; testes verdes não concedem Gate A. Duas falhas pelo mesmo motivo: explicar e corrigir a causa, sem repetir cegamente.
 
 ## Especificação com TLC
 
@@ -74,11 +74,12 @@ As garantias de banco/transação abaixo são da API real na Fase B. MSW pode si
 2. Toda operação que envolve agendamento **e** laudo roda em `prisma.$transaction` com `SELECT ... FOR UPDATE` na linha do `Appointment`. O estado `CANCELED` + laudo `PUBLISHED` é impossível.
 3. Nas operações do perfil `PATIENT`, o id do paciente vem **sempre** do usuário autenticado, nunca de params/query/body. A equipe pode selecionar `patientId` em suas rotas autorizadas; isso não altera o isolamento de `/me/*`.
 4. Recurso de outro paciente, ou laudo em rascunho, retorna `404 NOT_FOUND`, idêntico ao inexistente.
-5. A saída da API é sempre um DTO com `select` explícito. Nunca retorne entidade Prisma crua (risco de vazar `passwordHash`).
+5. A saída da API é sempre um DTO com `select` explícito e schema executado. Nunca retorne entidade Prisma crua (risco de vazar `passwordHash`). Validar a saída da mutação antes do commit, para erro de DTO também provocar rollback.
 6. Datas: `timestamptz` no banco, ISO 8601 UTC na API, exibição em `America/Sao_Paulo`. "Agora" vem de `clock.now()` (injetável), nunca de `new Date()` solto em regra de negócio.
 7. Laudo publicado é imutável.
 8. A UI do paciente não dá **nenhum** indício de que existe rascunho.
 9. Sem backend, o front chama `/api` via MSW em `apps/web/src/mocks`; nenhuma tela de produto sabe que é mock. Contrato só em `packages/contract`; mudou lá, atualize API.md no mesmo commit. Ativar MSW somente em dev com `VITE_API_MOCKING=true`; só `main.tsx`, fora de mocks, pode importar mocks. Build de produção sem mocks nem worker.
+10. Antes de limpar QA, interpretar estruturalmente a URL PostgreSQL, exigir o banco real `drlaudo_test` e conferir `current_database()` antes de operação destrutiva. Nome na query, alias de conexão ou uma URL principal de desenvolvimento/produção não autorizam limpeza.
 
 ## Design
 

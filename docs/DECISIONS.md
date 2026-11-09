@@ -39,7 +39,7 @@
 
 **D-18 — Docker opcional, infra adiada.** Enunciado não exige container. CI/E2E são C; Compose/Nginx/Traefik opcionais posteriores. Instruções sem Docker são obrigatórias; deploy/extras são cortados antes de regras/testes.
 
-**D-19 — Seed idempotente por UUID.** .test é reservado (RFC2606/6761). Transação com update vazio preserva alterações; datas/hash/textos só no create. Repetir não move, republica ou reseta senha. Boot só conecta; procedimento em [ARCH §9](ARCHITECTURE.md#9-seed-e-dados-demonstrativos).
+**D-19 — Seed idempotente por UUID.** .test é reservado (RFC2606/6761). Transação com update vazio preserva alterações; datas/hash/textos só no create. Repetir não move, republica ou reseta senha. Boot do servidor só conecta; migration/seed são passos explícitos do launcher/Compose; procedimento em [ARCH §9](ARCHITECTURE.md#9-seed-e-qa).
 
 **D-20 — Escopo fechado.** PDF/anexos/DICOM/recuperação/multi-sala/notificações/dark mode ficam fora, junto às demais exclusões do PRD. Evolução não é entrega prometida.
 
@@ -79,7 +79,7 @@
 
 **D-38 — Direção B-1 agrupa T-03/T-04.** Health/app dependem de schema/client/banco reais: preparar migration/helpers antes do aceite conjunto, sem banco falso. IDs preservados para revisão do futuro Tasks. npm test API inclui unidade/integração; test:integration só seleciona camada. Gate A/autorização B permanecem.
 
-**D-39 — Env raiz portável.** Vite envDir; API carrega .env por URL do módulo/Node22, env externo prevalece. Launcher reutiliza parser/operações fixas/schema absoluto; TEST vira DATABASE_URL só no filho após guarda, sem segredo em args/shell, cwd implícito ou cópia de env. [ARCH §11](ARCHITECTURE.md#11-modos-de-execução).
+**D-39 — Env raiz portável.** Vite/API/Prisma resolvem o .env da raiz por caminho do módulo, com variáveis externas prevalecendo; sem cópia por workspace. Scripts usam o contexto do workspace para Prisma e validação estrutural do alvo antes das operações QA. Nunca colocar segredo nos argumentos/logs. [ARCH §10](ARCHITECTURE.md#10-configuração-e-execução).
 
 **D-40 — TLC4.1.0, Specify canônico sem duplicação.** Skill instalada/autorizada e lida por arquivo local, com ferramentas nativas do host; não alegar descoberta automática OMP. docs/PRD.md é alvo aceito pelo validator oficial. Preservar RF/RN, EARS e Draft; sem captura binding inventada, .specs ou novo Tasks aprovado. Desenho e roteiro anteriores são apenas condensados. Coordenação executa gates documentais após integração; nenhum gate, commit ou implementação é autorizado por esta adaptação.
 
@@ -114,7 +114,30 @@ Planejadas para a aplicação; conferir versões/engines e lockfile na fase auto
 | B | prisma, @prisma/client, bcryptjs, pino-pretty(dev); persistência/hash/log local. |
 | C | @playwright/test, @axe-core/playwright; E2E/a11y, imagem igual à versão da biblioteca se Docker incluído. |
 
+Entrega autorizada em 2026-11-09: `@playwright/test` **1.65.0** (Node >=20) e `@axe-core/playwright` **4.14.0** (Node >=22.12.0), consultados no registro npm antes da atualização do lockfile. Node 22.22.2 satisfaz ambos. Dependências de teste do workspace E2E; não entram no runtime clínico. A coordenação executa os gates após a implementação.
+
 T1 autorizada: instalar somente Zod 4.6.7, Vitest 5.1.0, TypeScript 5.9.3, ESLint 10.14.0/@eslint/js 10.0.1, typescript-eslint 8.72.1, dependency-cruiser 18.7.2, Prettier 3.9.10 e @types/node 22.20.5. Versões/engines/peers conferidos no registro npm; Node local 22.22.2 atende ao piso >=22.13 das ferramentas. TypeScript 7.0.2 está fora do peer do typescript-eslint (<6.1); usar 5.9.3. A primeira instalação avisou que ESLint 9.39.5 não tem mais suporte: substituir pelo 10 antes do gate. Vite transitivo do Vitest é ferramenta de teste, não workspace web antecipado. Zod 4.6 mede min/max/length por pontos de código, confirmado na documentação e em execução; refinamentos de String.length preservam os limites UTF-16 da API. Lockfile registra resoluções exatas; nenhum pacote de backend/UI nesta unidade.
+
+**D-43 — Prisma 7 com driver adapter e cliente em TypeScript.** `prisma-client` com `output` em `src/generated/prisma` (ignorado no Git) e `@prisma/adapter-pg` sobre `pg`. O `prisma.config.ts` carrega o `.env` da raiz e aceita placeholder quando só há `generate`. `tsx` executa a API em dev e contêiner porque os imports gerados usam extensão `.ts`; `build` é `tsc --noEmit`. Alternativa descartada: emitir JS com extensão `.js` e manter um segundo caminho de execução.
+
+**D-44 — Autenticação em `onRequest`.** O hook roda antes do parse do corpo, garantindo que `401`/`403` precedam JSON malformado. A role do token é reconferida contra o banco a cada requisição autenticada, então remover ou rebaixar um usuário invalida o token mesmo com assinatura válida.
+
+**D-45 — Conflito `P2002` por nome de restrição.** Com driver adapters o Prisma 7 aninha o alvo em `meta.driverAdapterError.cause.constraint.index`. A classificação lê esse caminho, aceita `meta.target` legado e o nome no texto do erro, sempre comparando com os dois índices conhecidos; qualquer outro `P2002` continua `500` sanitizado.
+
+**D-46 — Suítes serializadas na raiz.** `npm test` encadeia contrato → API → web. Executar workspaces em paralelo fazia a integração com Postgres competir por CPU com o jsdom e estourar esperas de UI por tempo, não por defeito.
+
+**Registro de execução do backend (2026-11-08).** Migration aplicada em PostgreSQL 16, seed idempotente verificado por reexecução e 41 testes de integração cobrindo autenticação, autorização, grade, agendamento concorrente, cancelamento, laudo, imutabilidade, corrida cancelar × publicar e envelope HTTP. Os quatro casos opacos do paciente retornam bytes idênticos. `docker-compose.yml` (demo em `:8080`) e `docker-compose.qa.yml` (QA com `tmpfs`, sem portas) acompanham a entrega.
+
 Novas dependências exigem registro junto da mudança autorizada. As versões da T1 acima são as primeiras instaladas; demais pacotes da tabela continuam planejados.
 
 Fase A completa autorizada em 2026-11-08: conferir/instalar dependências da tabela com uso real. npm confirmou Vite 8.3.6, React/React DOM 19.3.1, plugin-react 6.2.1, Tailwind/plugin 4.3.5, RTK 2.14.0, React Redux 9.3.1, Router 7.18.5 (manter API v7 do desenho, sem migração v8 incidental), MSW 3.0.4, date-fns 4.4.0/tz 1.5.0, Radix unificado `radix-ui` 1.8.1 (primitivas shadcn locais), Lucide 1.70.0, Sonner 2.0.8, RHF 7.91.0/resolvers 7.0.3, Testing Library React 16.3.3/user-event 14.6.8/DOM 10.4.2/jest-dom 7.0.1 e jsdom 31.0.0. Node mínimo sobe a 22.22.2 por jsdom; runtime local já atende. Fontsource Inter/Jakarta 5.3.0; SVGR 5.2.0; CVA 0.7.1/clsx 2.1.1/tailwind-merge 3.7.0/tw-animate-css 1.4.0. Engines/peers conferidos; lockfile conserva versões efetivamente consumidas. CLI shadcn 4.23.0 é referência de geração, não dependência runtime. Sem novas dependências de backend/infra.
+
+**D-47 — Administração de pacientes incluída no produto.** A decisão posterior da usuária inclui cadastro e edição administrativa. A correção integral foi autorizada em 2026-11-09 por “corrija tudo e deixe pronto para entrega”. STAFF cadastra nome/e-mail/senha inicial e edita somente nome/e-mail; role é sempre PATIENT. Sem cadastro público, exclusão, mudança de perfil ou reset de senha. Nome tem 3–120 unidades UTF-16 após trim; senha inicial literal tem mínimo 8 unidades UTF-16 e máximo 72 bytes UTF-8, evitando truncamento silencioso do bcrypt. E-mail único em todas as contas gera `409 EMAIL_TAKEN`, sem sobrescrita. O complemento não é apresentado como requisito original do enunciado.
+
+**D-48 — Um relógio também para verificar JWT.** Emissão e verificação usam o Clock injetado. Testes não dependem de tokens com data fixa comparados ao relógio de parede, nem alteram o relógio global do driver. Assinatura, algoritmo, issuer, claims e instante exato de expiração continuam obrigatórios.
+
+**D-49 — Alvo QA validado como URL, não substring.** Antes de qualquer limpeza, interpretar a conexão PostgreSQL estruturalmente e exigir que o banco real seja exatamente `drlaudo_test`; uma ocorrência na query não autoriza operações destrutivas. A igualdade com a conexão principal só é admissível no processo de teste explicitamente descartável, não em desenvolvimento/produção. Base e fixtures QA nunca compartilham volume demonstrativo.
+
+**D-50 — Proxy e headers em todas as superfícies.** Respeitar a quantidade configurada de proxies confiáveis, sem transformar um hop em confiança irrestrita no X-Forwarded-For do cliente. Nginx deve entregar os headers de segurança também no HTML e nos assets, considerando que `add_header` em `location` substitui a herança. URLs `/api` inválidas não viram SPA nem redirecionam para uma porta diferente.
+
+**D-51 — Verificação reproduzível a partir de fontes.** Scripts que consomem `@drlaudo/contract` devem construir seu artefato antes de resolver os exports, inclusive no typecheck de uma instalação limpa. Arquitetura cobre contrato, API e web, não somente os módulos do contrato. E2E real permanece separado da suíte unitária/componentes/integração, com um worker e zero retries. Artefatos de desenvolvimento não são entregues no build de produção.

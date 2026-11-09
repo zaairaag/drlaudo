@@ -1,9 +1,9 @@
 # Dr. Laudo Specification
 
 **Approved**: 2026-11-08 - user: "pode seguir"
-**Status:** Specify e plano aprovados; Fase A autorizada em 2026-11-08 com “pode começar então a implementação do plano”. Implementação iniciada pela T1 (contrato/tooling); nenhum aceite de produto ou Gate A concedido. Backend, infraestrutura e publicação continuam separados.
+**Status:** Specify e plano aprovados. Em 2026-11-09, a usuária autorizou “corrija tudo e deixe pronto para entrega”, incluindo as correções da auditoria e o cadastro/gestão administrativa de pacientes já decidido para o produto. A execução técnica não concede aprovação visual/UX humana nem autoriza push ou deploy.
 **Autoridade:** [DESAFIO](DESAFIO.md) → este Specify canônico → demais documentos. RF/RN preservam identidade e alcance; [DECISIONS](DECISIONS.md) registra os motivos.
-**Ordem:** aprovação da spec/autorização → A (frontend/contrato/MSW, teto de 1,5 dia) → Gate A visual/UX explícito da responsável de produto → B (API real) → C (CI/E2E/entrega). Três dias de prazo não equivalem a horas dedicadas.
+**Entrega:** contrato e frontend compartilhados com API/PostgreSQL reais; gates de segurança, testes, execução limpa e acessibilidade. O Gate A visual/UX continua decisão humana. Três dias de prazo não equivalem a horas dedicadas.
 
 ## Problem Statement
 A clínica fictícia precisa reservar horários sem conflito, registrar laudos e liberar somente os publicados ao paciente correto. Autorização também em chamadas diretas e cinco cenários automatizados são exigências do desafio.
@@ -18,7 +18,6 @@ A clínica fictícia precisa reservar horários sem conflito, registrar laudos e
 | Exclusão | Motivo / limite |
 |---|---|
 | PDF/anexos/DICOM/assinatura digital/validação clínica | Dispensados; laudo é texto simples. |
-| Cadastro público/recuperação/manutenção pública de usuários ou catálogo | Contas/exames fictícios vêm do seed. |
 | Múltiplas salas/notificações/pagamentos/dark mode | Escopo fechado; template não cria capacidades. |
 | Delete/reativação/remarcação por update/transferência/despublicação | Preservar histórico e publicação imutável. |
 | Uso clínico real ou deploy presumido | Demo; Docker/deploy opcionais, posteriores e sujeitos a autorização. |
@@ -90,7 +89,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 **Acceptance Criteria:**
 1. WHEN a equipe consulta agenda THEN a lista SHALL respeitar filtros/intervalo/ordem de API §4.2.
 2. WHEN a agenda abre sem data THEN a tela SHALL selecionar hoje em Brasília.
-3. WHEN a equipe usa anterior/próxima data THEN a seleção SHALL mudar um dia civil local.
+3. WHEN a equipe usa anterior/próxima data THEN a seleção SHALL mudar um dia civil local preservando o paciente; “Hoje” SHALL voltar ao dia atual de Brasília sem limpar esse filtro. A agenda SHALL apresentar data por extenso e marcador “Hoje” somente no dia correspondente.
 4. WHEN filtros válidos mudam ou voltam pelo histórico THEN a URL SHALL representar a seleção atual.
 5. IF o filtro da URL é inválido THEN a tela SHALL oferecer “Limpar filtros” sem consultar esse filtro.
 6. WHEN a agenda é apresentada THEN cada item SHALL mostrar horário/paciente/exame/situação e informação de laudo exclusiva STAFF.
@@ -101,7 +100,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 11. WHEN a data muda THEN o formulário SHALL limpar somente o horário selecionado.
 12. WHILE a grade carrega, está inválida ou em erro a tela SHALL não oferecer slot acionável.
 13. WHEN a criação é confirmada THEN a navegação SHALL abrir a agenda da data sem filtro de paciente.
-14. WHEN o novo item aparece após criação THEN o foco SHALL destacá-lo.
+14. WHEN o novo item aparece após criação confirmada THEN o foco SHALL destacar o registro visível na tabela ou lista mobile com marcador textual “Recém-agendado”, feedback “Exame agendado.” e ação “Abrir agendamento”. URL com foco sem confirmação de criação, leitura pendente/erro ou id ausente SHALL não anunciar sucesso.
 15. IF o horário é perdido ou já começou THEN o formulário SHALL preservar paciente/exame/data durante reconciliação.
 16. IF o início é inválido THEN a tela SHALL pedir escolha na grade sem arredondar o instante.
 17. WHEN a equipe usa “Cancelar” THEN o diálogo SHALL mostrar a confirmação de Interface Contract.
@@ -120,11 +119,11 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 3. IF detalhe/leitura de laudo discordam ou falham THEN a tela SHALL reconciliar ambos sem tratar erro interno como ausência.
 4. WHEN detalhe confirma agendado sem laudo e a leitura confirma ausência THEN a tela SHALL oferecer formulário vazio com “Salvar rascunho”.
 5. WHEN existe DRAFT ativo THEN a tela SHALL oferecer os três campos editáveis de TESTING §7.
-6. WHEN “Salvar rascunho” é usado com formulário válido THEN o sistema SHALL persistir os três textos atuais normalizados por RN-16.
-7. WHEN salvar retorna DTO válido THEN o editor SHALL adotar esse conteúdo como baseline na rota do agendamento.
+6. WHEN “Salvar rascunho” é usado com formulário válido THEN o sistema SHALL persistir os três textos atuais normalizados por RN-16. Os três campos SHALL expor contadores UTF-16 após trim, com limites 120/10.000/120 e associação acessível, sem cortar texto ou salvar automaticamente.
+7. WHEN salvar retorna DTO válido THEN o editor SHALL adotar esse conteúdo como baseline na rota do agendamento e anunciar “Rascunho salvo.”. Ao editar novamente SHALL mostrar “Alterações não salvas” sem sucesso antigo; falha de gravação SHALL preservar texto bruto, dirty e proteção de abandono.
 8. WHILE falta rascunho salvo, há dirty ou formulário inválido “Publicar” SHALL ficar indisponível.
 9. IF há alteração não salva para publicação THEN a tela SHALL mostrar “Salve o rascunho antes de publicar.”.
-10. WHEN “Publicar” é usado em DRAFT elegível THEN a tela SHALL abrir a confirmação de Interface Contract, sem mutação implícita.
+10. WHEN “Publicar” é usado em DRAFT elegível THEN a tela SHALL abrir a confirmação de Interface Contract com paciente/exame/data, título, profissional e texto literal da última versão salva/reconciliada do mesmo agendamento, sem mutação implícita. A revisão SHALL rolar internamente para textos longos mantendo “Voltar”/“Publicar laudo” alcançáveis e foco inicial seguro.
 11. WHEN “Publicar laudo” é confirmado THEN o sistema SHALL somente publicar o rascunho salvo.
 12. WHEN publicar tem sucesso válido THEN a tela SHALL trocar editor por leitura com “Publicado em”/horário de Brasília.
 13. WHILE o laudo está publicado a tela SHALL apresentar leitura imutável com o aviso de Interface Contract.
@@ -142,7 +141,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 **User Story:** Como paciente, quero consultar meus exames e somente meus resultados publicados.
 **Why P1:** RF-08 exige privacidade em lista, leitura e URL direta.
 **Acceptance Criteria:**
-1. WHEN o paciente abre a lista THEN a tela SHALL mostrar histórico próprio completo, agendado/cancelado, na ordem de API §4.2.
+1. WHEN o paciente abre a lista THEN a tela SHALL mostrar histórico próprio completo, agendado/cancelado, na ordem de API §4.2, agrupado por mês e ano do exame em Brasília sem reordenar ou omitir registros.
 2. WHEN há publicado THEN o item SHALL oferecer “Laudo disponível” e “Ver laudo”.
 3. WHILE não há publicado o item SHALL ser idêntico entre ausência/DRAFT, sem id/estado/contador/metadado de laudo.
 4. WHEN o leitor é aberto por link/URL THEN a tela SHALL mostrar exame/título/texto simples com quebras/profissional/data do exame/“Publicado em”.
@@ -169,6 +168,22 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 12. WHEN a mutação recebe DTO válido de sucesso THEN a tela SHALL anunciar seu feedback de Interface Contract.
 **Independent Test:** Componentes reais, loading/vazio/erro, teclado/leitor/foco, viewport e zoom; axe complementa revisão manual.
 
+### P1: S7 — Patient administration
+**User Story:** Como equipe, quero cadastrar pacientes e corrigir nome/e-mail sem alterar seus exames ou sua identidade.
+**Why P1:** Decisão posterior de produto incluiu cadastro e gestão administrativa; não é cadastro público.
+**Acceptance Criteria:**
+1. WHEN STAFF abre `/pacientes` THEN a tela SHALL listar pacientes e oferecer “Novo paciente” e “Editar paciente”.
+2. WHEN STAFF cadastra nome, e-mail e senha válidos THEN o sistema SHALL criar uma identidade PATIENT e retornar somente o DTO de paciente.
+3. WHEN nome/e-mail são recebidos THEN o sistema SHALL normalizá-los conforme API; nome SHALL ter 3–120 unidades UTF-16 após trim.
+4. WHEN a senha inicial é recebida THEN o sistema SHALL preservar seu valor literal, exigir ao menos 8 unidades UTF-16 e no máximo 72 bytes UTF-8 antes do hash bcrypt.
+5. IF o e-mail já pertence a qualquer conta THEN o sistema SHALL retornar `409 EMAIL_TAKEN`, sem alterar a conta existente.
+6. WHEN STAFF edita nome/e-mail THEN o sistema SHALL preservar id, role, senha, agendamentos e laudos; omissões SHALL manter seus valores.
+7. IF PATIENT ou pessoa sem sessão chama as rotas administrativas diretamente THEN o backend SHALL negar acesso com 403 ou 401, respectivamente.
+8. WHEN a conta cadastrada faz login THEN o portal SHALL apresentar somente seus próprios dados, inicialmente sem exames.
+9. IF o cadastro/edição falha THEN a tela SHALL associar o erro aos campos e preservar os dados locais sem persistir senha em storage.
+10. WHEN o cadastro/edição é confirmado THEN listas e seletores SHALL refletir a identidade atualizada, sem exigir reload manual.
+**Independent Test:** STAFF cadastra e edita; duplicação/validação/perfil não escrevem; nova conta autentica e não recebe dados dos pacientes existentes.
+
 ## Edge Cases
 E1…E7 identificam as linhas abaixo.
 1. IF a entrada viola formatos/limites/precedência THEN o sistema SHALL responder exatamente como API §§1–4/7, sem escrita parcial. <!-- E1 -->
@@ -180,7 +195,7 @@ E1…E7 identificam as linhas abaixo.
 7. WHEN há diagnóstico THEN logs SHALL conter só metadados sanitizados de ARCH §10, nunca senha/token/conexão/texto clínico. <!-- E7 -->
 
 ## Requirement Traceability
-Specify aprovado; implementação e verificação de todos os requisitos permanecem Pending. Requisito preservado → história/critério; wire contract não é repetido. [TESTING](TESTING.md) mantém cenários, fixtures, oráculos e evidências futuras.
+Rastreabilidade dos requisitos originais e do complemento autorizado. Estados são atualizados somente após provas correspondentes; planejamento e contagem de testes não concedem aceite. [TESTING](TESTING.md) mantém os cenários e a evidência.
 | Requirement ID | Requisito | Story / AC | Status |
 |---|---|---|---|
 | RF-01 | Login e-mail/senha e atalhos demo. | S1.1–6 | Pending |
@@ -191,6 +206,7 @@ Specify aprovado; implementação e verificação de todos os requisitos permane
 | RF-06 | Criar/editar rascunho: título/texto/profissional. | S4.1–7/14–21 | Pending |
 | RF-07 | Publicar com confirmação de irreversibilidade. | S4.8–13 | Pending |
 | RF-08 | Lista própria e leitura própria publicada. | S5.1–7 | Pending |
+| RF-09 | Cadastro e edição administrativa de pacientes por STAFF. | S7.1–10 | Pending |
 | RN-01 | STAFF/PATIENT; seed, sem cadastro público. | S1; Out of Scope | Pending |
 | RN-02 | JWT obrigatório, exceto login/health (API §§3/5.2). | S1; E1 | Pending |
 | RN-03 | STAFF obrigatório nas rotas de equipe. | S1.7–8; API §3 | Pending |
@@ -216,7 +232,7 @@ Specify aprovado; implementação e verificação de todos os requisitos permane
 | RN-23 | Só PUBLISHED ao paciente; DRAFT igual a ausente em UI/API. | S5.3/5; API §5.16 | Pending |
 | RN-24 | Sem passwordHash ou dado alheio ao paciente nas respostas. | S2.4–5; S5; API §6.2 | Pending |
 | RN-25 | UTC armazenado; exibir Brasília com indicação, independente do host/browser. | S3.2–3; S4.12; Interface Contract | Pending |
-**Coverage:** 33 requisitos (8 RF + 25 RN) e 87 critérios com provas planejadas. Implementação e verificação continuam Pending; nenhum requisito foi declarado Verified.
+**Coverage:** requisitos originais RF-01…08/RN-01…25 e complemento RF-09 possuem critérios rastreáveis. O parecer de execução e seus limites pertencem a TESTING.
 
 ## Route Map
 | Rota de tela | Perfil / resultado |
@@ -224,6 +240,7 @@ Specify aprovado; implementação e verificação de todos os requisitos permane
 | `/`, `/login` | STAFF home `/agenda`, PATIENT `/meus-exames`; sem sessão, login: “E-mail”/“Senha”/“Entrar”, três atalhos e aviso fictício. |
 | `/agenda?date=YYYY-MM-DD&patientId=UUID` | STAFF: data/paciente opcional; “Novo agendamento” preserva data. |
 | `/agendamentos/novo?date=YYYY-MM-DD` | STAFF: paciente→exame→data→horário→“Agendar exame”. |
+| `/pacientes` | STAFF: lista, cadastro e edição de nome/e-mail; sem exclusão, reset de senha ou mudança de perfil. |
 | `/agendamentos/:id/laudo` | STAFF: detalhe/laudo independente da agenda. |
 | `/meus-exames`, `/meus-exames/:id/laudo` | PATIENT: histórico/leitor; id do agendamento, não do laudo. |
 | `/_ds` | Só dev: catálogo/estados e controles injetados, sem importar mock. |
@@ -251,7 +268,7 @@ Baseline textual existente, não mockup binding. [TESTING §7](TESTING.md#7-cont
 - Meta WCAG 2.1 AA, não certificação: teclado/leitor/foco/reflow/zoom de 200%/movimento reduzido, axe e contraste WebAIM medido antes de alegação pública. Tabela desktop/cards mobile, sem corte a 375 px; baseline completo em ARCH §8.3.
 
 ## Differences from the source
-Sem mudança de alcance do enunciado; complementos herdados em Assumptions/D-01…39. Nenhuma captura/frame/site visual foi fornecido; não existe divergência visual binding a aprovar.
+O núcleo do enunciado é preservado. O cadastro e a edição administrativa de pacientes são um complemento explicitamente incluído pela usuária; não são apresentados como exigência original do teste. Sem cadastro público, exclusão de paciente ou recuperação/reset de senha. As demais decisões herdadas permanecem em Assumptions/DECISIONS.
 
 ## Sources
 - [DESAFIO](DESAFIO.md), §§1–5: autoridade, cenários e entrega; “Vive coding” é o termo literal do uso de IA.
@@ -266,4 +283,4 @@ Sem mudança de alcance do enunciado; complementos herdados em Assumptions/D-01�
 
 ## Risks and Release Boundaries
 Vermelho bloqueia entrega: privacidade/rascunho/cache ou integridade concorrente, mitigados por DTO/filtro/reset e provas reais. Alto: token local/XSS/não revogação(DT-01), mock divergente/em produção; texto escapado/CSP/8h/build limpo limitam risco só da demo. Médio: fuso, sobrescrita DRAFT/demo envelhecida(DT-02/03); clock/helper único, reconciliação e QA independente.
-Coordenação integra; frontend recebe A, backend B, QA E2E, entrega/operação C; arquitetura/segurança revisam seus riscos. São alçadas previstas, não despachos de implementação realizados. Produto decide prazo/autorizações/uso real; cortar extras/deploy antes de RF/RN se A exceder teto. Nenhum produto, teste ou publicação está aprovado nesta fase de planejamento.
+Coordenação integra; frontend mantém as jornadas, backend as regras/locks, QA suas provas e entrega/operação a execução reproduzível. A autorização de correção não equivale a aceite de produto, commit, push, publicação ou permissão para dados clínicos reais.
