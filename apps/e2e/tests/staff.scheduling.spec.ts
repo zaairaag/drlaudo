@@ -1,7 +1,7 @@
 import { ErrorResponseSchema, StaffAppointmentSchema } from '@drlaudo/contract';
 import { test, expect } from '../support/fixtures.ts';
 import { expectApiError } from '../support/api.ts';
-import { addDays, clinicDate, slotAt } from '../support/dates.ts';
+import { addDays, clinicDate, displayDate, slotAt } from '../support/dates.ts';
 import { QA } from '../support/qa.ts';
 import { apiResponse, appointmentItem, reportHref } from '../support/ui.ts';
 
@@ -67,6 +67,45 @@ test('RF-04 · filtros de data/paciente têm AND, ordem e persistência em URL/F
   await expect(page.getByLabel('Data', { exact: true })).toHaveValue(clinicDate());
   await expect(page.getByLabel('Paciente', { exact: true })).toHaveValue(QA.ana.id);
   expect(new URL(page.url()).searchParams.get('patientId')).toBe(QA.ana.id);
+});
+
+test('RF-04 · todos os agendamentos preserva paciente, datas e retorno do laudo', async ({ staff, scenario }) => {
+  const near = await staff.api.createAppointment(QA.ana.id, QA.xray.id, slotAt(scenario.date, 3));
+  const distantDate = addDays(scenario.date, 90);
+  const distant = await staff.api.createAppointment(QA.ana.id, QA.mri.id, slotAt(distantDate, 3));
+  const other = await staff.api.createAppointment(QA.bruno.id, QA.ultrasound.id, slotAt(distantDate, 4));
+  await staff.api.cancel(distant.id);
+  const page = staff.page;
+  await page.goto(`/agenda?${new URLSearchParams({ date: scenario.date, patientId: QA.ana.id })}`);
+  await expect(appointmentItem(page, near.id)).toBeVisible();
+  await expect(appointmentItem(page, distant.id)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ver todos os agendamentos', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.get('scope') === 'all'
+    && url.searchParams.get('patientId') === QA.ana.id && !url.searchParams.has('date'));
+  await expect(page.getByRole('heading', { name: 'Todos os agendamentos', exact: true })).toBeVisible();
+  await expect(appointmentItem(page, distant.id)).toBeVisible();
+  await expect(appointmentItem(page, distant.id).getByText('Cancelado', { exact: true })).toBeVisible();
+  await expect(appointmentItem(page, distant.id)).toContainText(displayDate(distantDate));
+  await expect(appointmentItem(page, other.id)).toHaveCount(0);
+  await page.reload();
+  await expect(appointmentItem(page, near.id)).toBeVisible();
+  await expect(appointmentItem(page, distant.id)).toBeVisible();
+  await appointmentItem(page, near.id).getByRole('link', { name: 'Criar laudo', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Criar laudo', exact: true })).toBeVisible();
+  await page.reload();
+  await page.getByRole('link', { name: 'Voltar para agenda', exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === '/agenda'
+    && url.searchParams.get('scope') === 'all' && url.searchParams.get('patientId') === QA.ana.id
+    && !url.searchParams.has('date'));
+  await page.getByLabel('Paciente', { exact: true }).selectOption(QA.bruno.id);
+  await expect(appointmentItem(page, other.id)).toBeVisible();
+  await expect(appointmentItem(page, near.id)).toHaveCount(0);
+  await expect(appointmentItem(page, distant.id)).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get('scope')).toBe('all');
+  await page.getByRole('button', { name: 'Hoje', exact: true }).click();
+  await expect(page.getByLabel('Data', { exact: true })).toHaveValue(clinicDate());
+  expect(new URL(page.url()).searchParams.has('scope')).toBe(false);
+  await expect(page.getByLabel('Paciente', { exact: true })).toHaveValue(QA.bruno.id);
 });
 
 test('RF-05 · desistir não cancela; confirmar preserva DRAFT e permite novo id no slot liberado', async ({ staff, scenario }) => {

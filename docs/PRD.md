@@ -4,6 +4,7 @@
 **Status:** Specify e plano aprovados. Em 2026-11-09, a usuária autorizou “corrija tudo e deixe pronto para entrega”, incluindo as correções da auditoria e o cadastro/gestão administrativa de pacientes já decidido para o produto. Posteriormente autorizou organização dos commits, push e implantação na VPS com subdomínio de `zairagoncalves.com`; a demo está em `https://drlaudo.zairagoncalves.com`. Essas autorizações não concedem aprovação visual/UX humana nem permissão para dados clínicos reais. Evidências e pendências em TESTING.
 **Autoridade:** [DESAFIO](DESAFIO.md) → este Specify canônico → demais documentos. RF/RN preservam identidade e alcance; [DECISIONS](DECISIONS.md) registra os motivos.
 **Entrega:** contrato e frontend compartilhados com API/PostgreSQL reais; gates de segurança, testes, execução limpa e acessibilidade. O Gate A visual/UX continua decisão humana. Três dias de prazo não equivalem a horas dedicadas.
+**Complemento aprovado nesta conversa:** a usuária autorizou “faça isso, ajuste no git e suba na vps por favor” para manter a agenda diária, acrescentar “Ver todos os agendamentos”, preservar filtro por paciente e retorno do laudo, incluindo Git e implantação da melhoria. Não inclui busca por intervalo, paginação ou mudanças no isolamento do portal.
 
 ## Problem Statement
 A clínica fictícia precisa reservar horários sem conflito, registrar laudos e liberar somente os publicados ao paciente correto. Autorização também em chamadas diretas e cinco cenários automatizados são exigências do desafio.
@@ -88,7 +89,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 **Why P1:** RF-03/04/05 são a jornada obrigatória de agendamento.
 **Acceptance Criteria:**
 1. WHEN a equipe consulta agenda THEN a lista SHALL respeitar filtros/intervalo/ordem de API §4.2.
-2. WHEN a agenda abre sem data THEN a tela SHALL selecionar hoje em Brasília.
+2. WHEN a agenda abre sem data nem modo completo THEN a tela SHALL selecionar hoje em Brasília.
 3. WHEN a equipe usa anterior/próxima data THEN a seleção SHALL mudar um dia civil local preservando o paciente; “Hoje” SHALL voltar ao dia atual de Brasília sem limpar esse filtro. A agenda SHALL apresentar data por extenso e marcador “Hoje” somente no dia correspondente.
 4. WHEN filtros válidos mudam ou voltam pelo histórico THEN a URL SHALL representar a seleção atual.
 5. IF o filtro da URL é inválido THEN a tela SHALL oferecer “Limpar filtros” sem consultar esse filtro.
@@ -108,6 +109,10 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 19. WHEN cancelar tem sucesso THEN a tela SHALL apresentar o item cancelado após reconciliar agenda/detalhe/grade.
 20. IF o item deixou de ser cancelável THEN a tela SHALL mostrar o estado atualizado sem anunciar sucesso.
 21. WHEN a equipe reserva horário liberado ainda futuro THEN o sistema SHALL criar novo agendamento, sem reativar o cancelado.
+22. WHEN a equipe usa “Ver todos os agendamentos” THEN a agenda SHALL consultar explicitamente o histórico completo, incluindo passados, futuros e cancelados, preservando o paciente e removendo o recorte diário.
+23. WHILE a consulta completa está ativa THEN a tela SHALL mostrar “Todos os agendamentos”, o paciente atual e a data/hora de cada exame em Brasília, sem aparentar que os registros pertencem ao mesmo dia.
+24. WHEN a equipe altera o paciente no modo completo THEN a consulta SHALL manter o modo completo e filtrar somente o paciente selecionado.
+25. WHEN a equipe escolhe uma data ou “Hoje” THEN a agenda SHALL voltar ao recorte diário mantendo o paciente; F5/histórico e retorno do laudo SHALL preservar o modo e paciente atuais.
 **Independent Test:** Agenda/slots próprios: filtro/URL, criação/perda de slot, cancelar DRAFT e reutilizar; CEN-01/05 exigem Postgres.
 
 ### P1: S4 — Draft and publish a report

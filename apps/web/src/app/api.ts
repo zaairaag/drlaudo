@@ -154,6 +154,7 @@ export const api = createApi({
       query: (query) => {
         const params = new URLSearchParams();
         if (query.date !== undefined) params.set('date', query.date);
+        if (query.scope !== undefined) params.set('scope', query.scope);
         if (query.patientId !== undefined) params.set('patientId', query.patientId);
         return { url: `/appointments${params.size ? `?${params.toString()}` : ''}`, input: { schema: AppointmentListQuerySchema, value: query, location: 'query' }, responseSchema: StaffAppointmentListResponseSchema };
       },

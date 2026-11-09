@@ -69,7 +69,7 @@ Título, corpo e profissional recebem trim nativo JavaScript **antes** dos limit
 | `SlotQuerySchema` | `date: LocalDate` obrigatório. |
 | `SlotsResponseSchema` | `date: LocalDate`, `timezone: "America/Sao_Paulo"`, `slots: Slot[]`; inícios distintos, ordenados e correspondentes à grade desse dia. São 24 em dias normais; omitir posições civis inexistentes em transições históricas IANA (§4.1). |
 | `CreateAppointmentRequestSchema` | `patientId: UUID`, `examTypeId: UUID`, `startsAt: UtcDateTime`; sem id/status/duração/sala/laudo. |
-| `AppointmentListQuerySchema` | `date?: LocalDate`, `patientId?: UUID`; nenhum outro filtro. |
+| `AppointmentListQuerySchema` | `date?: LocalDate`, `patientId?: UUID`, `scope?: "all"`; scope e date são mutuamente exclusivos. Ausente scope conserva a janela padrão; nenhum outro filtro. |
 | `StaffAppointmentListResponseSchema` | `StaffAppointment[]`, inclusive vazio. |
 | `CreateReportRequestSchema` | `title: string` 3…120, `body: string` 10…10.000, `professionalName: string` 3…120, após trim; sem status/publishedAt/ids/datas. |
 | `UpdateReportRequestSchema` | Mesmos três campos/limites após trim, todos opcionais, **ao menos um presente**. Validar integralmente cada enviado; omissão preserva valor, null não limpa. |
@@ -109,8 +109,9 @@ Params/query não indicados = `EmptyObjectSchema`; body não indicado = `NoBodyS
 
 ### 4.2 Intervalos e ordenação
 - Data explícita filtra dia civil inteiro com `startsAt >= from` e `< to`: `date=2026-11-10` → `[2026-11-10T03:00:00.000Z, 2026-11-11T03:00:00.000Z)`. Offset é exemplo dessa data, não regra fixa.
-- Sem date: `[início de hoje local, início local de hoje + 30 dias)`, hoje inteiro + 29 dias, incluindo horários passados de hoje e cancelados. Não `[now, now + 720h]` nem 31º dia. Somar dias civis no fuso; meia-noite em lacuna usa o primeiro instante válido daquele dia.
+- Sem date nem scope: `[início de hoje local, início local de hoje + 30 dias)`, hoje inteiro + 29 dias, incluindo horários passados de hoje e cancelados. Não `[now, now + 720h]` nem 31º dia. Somar dias civis no fuso; meia-noite em lacuna usa o primeiro instante válido daquele dia.
 - Com `now = 2026-11-10T12:00:00.000Z`, janela padrão termina `2026-12-10T03:00:00.000Z` e começa `2026-11-10T03:00:00.000Z`. `9999-12-31` segue aceito; fim interno no ano 10000 é Date, não timestamp HTTP.
+- `scope=all` explícito, exclusivo STAFF: remove a restrição temporal e inclui histórico passado/futuro e ambos os estados, mantendo o filtro por patientId e a mesma ordenação/DTO. `scope` com outro valor, vazio, null ou tipo não string → 400. `scope=all` junto com `date` → 400 VALIDATION_ERROR, detalhe `query/date/INVALID_FORMAT`; query duplicada mantém DUPLICATE_QUERY. `/me/*` não aceita scope nem seleção de paciente.
 - date/patientId combinam com AND; sem patientId inclui todos. UUID válido sem paciente correspondente ou de STAFF → `200 []`, não 404. STAFF lista ambos os estados e report/resumo ou null, ordenados por `startsAt ASC, id ASC` lexicográfico. `/me/appointments` mantém essa ordem/estados, sem filtros/janela: histórico próprio completo.
 - Detalhe STAFF por id independe de janela, filtros, cache, estado, passado/futuro ou existência de laudo. Pacientes/exames: `name ASC, id ASC`, nomes comparados por pontos de código Unicode, sem locale; PostgreSQL UTF-8 usa binário `COLLATE "C"`. Sem busca/paginação.
 
@@ -166,7 +167,7 @@ Date obrigatório; dia passado também retorna a grade inteira indisponível, co
 Criar SCHEDULED sem laudo (`report: null`); paciente deve existir como PATIENT (id STAFF → 404) e exame existir. Precedência §4.3, conflito §6.1; SELECT de disponibilidade não garante exclusão.
 
 ### 5.8 `GET /appointments?date=2026-11-10&patientId=22222222-2222-4222-8222-222222222222`
-Filtros opcionais/combináveis, janela sem date e ordenação do §4.2; report é resumo ou null, nunca texto.
+Paciente combina com data ou com scope=all, nunca data e scope juntos. Sem date/scope aplica a janela padrão; modo completo remove apenas o recorte temporal. Ordenação conforme §4.2; report é resumo ou null, nunca texto.
 
 ### 5.9 `GET /appointments/77777777-7777-4777-8777-777777777777`
 Detalhe sem laudo retorna 200 com `report: null`; não depende da agenda. Editor lê também §5.12: detalhe 404 encerra fluxo; só detalhe confirmado 200/null admite “sem laudo”, e cancelado bloqueia criação/edição/publicação. Resumo existente + leitura falha exige refazer consultas/tratar inconsistência, nunca criar outro laudo ou restaurar dados de outro id. Jornada em PRD.

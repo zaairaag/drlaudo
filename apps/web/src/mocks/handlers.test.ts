@@ -85,7 +85,7 @@ function appointmentInput(startsAt = '2026-11-11T16:00:00.000Z') {
 }
 const staffRoutes = [
   ['GET', '/patients'], ['POST', '/patients'], ['PATCH', '/patients/bad'], ['GET', '/exam-types'], ['GET', '/slots?date=bad'],
-  ['POST', '/appointments'], ['GET', '/appointments'], ['GET', '/appointments/bad'],
+  ['POST', '/appointments'], ['GET', '/appointments'], ['GET', '/appointments?scope=all'], ['GET', '/appointments/bad'],
   ['POST', '/appointments/bad/cancel'], ['POST', '/appointments/bad/report'],
   ['GET', '/appointments/bad/report'], ['PATCH', '/reports/bad'], ['POST', '/reports/bad/publish'],
 ] as const;
@@ -456,6 +456,47 @@ describe('T10 — agendar, consultar e cancelar', () => {
     const result = StaffAppointmentListResponseSchema.parse(await json(response));
     expect(result.map((entry) => entry.id)).toEqual([ids.draftAppointment, ids.canceledAppointment, ids.plainAppointment]);
   });
+  it.each([
+    { label: 'todos os pacientes', query: 'scope=all', expectedIds: [ids.publishedAppointment, ids.draftAppointment, ids.plainAppointment, ids.canceledAppointment, ids.brunoAppointment] },
+    { label: 'paciente selecionado', query: `scope=all&patientId=${ids.ana}`, expectedIds: [ids.publishedAppointment, ids.draftAppointment, ids.plainAppointment] },
+    { label: 'paciente inexistente', query: `scope=all&patientId=${ids.missing}`, expectedIds: [] },
+    { label: 'id de STAFF', query: `scope=all&patientId=${ids.staff}`, expectedIds: [] },
+  ])('scope=all inclui passado distante, futuro e cancelados em ordem estável para $label', async ({ query, expectedIds }) => {
+    const [published, draft, plain, brunoAppointment, canceled] = mockDb.appointments;
+    if (!published || !draft || !plain || !brunoAppointment || !canceled) throw new Error('Missing arranged complete agenda');
+    published.startsAt = '2020-11-10T13:00:00.000Z';
+    draft.startsAt = '2026-11-10T13:00:00.000Z';
+    plain.startsAt = '2028-11-10T13:00:00.000Z';
+    plain.status = 'CANCELED';
+    plain.canceledAt = NOW;
+    canceled.startsAt = '2028-11-10T13:00:00.000Z';
+    brunoAppointment.startsAt = '2030-11-10T13:00:00.000Z';
+    mockDb.appointments.reverse();
+    const response = await call('GET', `/appointments?${query}`, { token: await staff() });
+    expect(response.status).toBe(200);
+    const result = StaffAppointmentListResponseSchema.parse(await json(response));
+    expect(result.map((entry) => entry.id)).toEqual(expectedIds);
+  });
+  it.each(['', 'ALL', 'daily', 'null', 'undefined', 'true', '1', '%20all', 'all%20'])(
+    'rejects scope=%s without coercing or ignoring it', async (scope) => {
+      await expectValidation(await call('GET', `/appointments?scope=${scope}`, { token: await staff() }), [
+        issue('query', ['scope'], 'INVALID_FORMAT'),
+      ]);
+    },
+  );
+  it.each([
+    ['scope=all&date=2026-11-10', [issue('query', ['date'], 'INVALID_FORMAT')]],
+    [`date=2026-11-10&scope=all&patientId=${ids.ana}`, [issue('query', ['date'], 'INVALID_FORMAT')]],
+    ['scope=all&patientId=invalido', [issue('query', ['patientId'], 'INVALID_FORMAT')]],
+    ['scope=all&patientId=', [issue('query', ['patientId'], 'INVALID_FORMAT')]],
+    ['scope=all&extra=true', [issue('query', ['extra'], 'UNKNOWN_FIELD')]],
+    ['scope=all&scope=all', [issue('query', ['scope'], 'DUPLICATE_QUERY')]],
+    ['scope=all&scope=invalido', [issue('query', ['scope'], 'DUPLICATE_QUERY')]],
+    ['scope=all&date=2026-11-10&date=2026-11-10', [issue('query', ['date'], 'DUPLICATE_QUERY')]],
+    [`scope=all&patientId=${ids.ana}&patientId=${ids.bruno}`, [issue('query', ['patientId'], 'DUPLICATE_QUERY')]],
+  ] as const)('keeps strict query validation and duplicate precedence for %s', async (query, details) => {
+    await expectValidation(await call('GET', `/appointments?${query}`, { token: await staff() }), [...details]);
+  });
   it('filters an explicit day as [local midnight, next local midnight)', async () => {
     const [first, second, third, fourth] = mockDb.appointments;
     if (!first || !second || !third || !fourth) throw new Error('Missing arranged day boundaries');
@@ -682,11 +723,16 @@ describe('T12 — portal próprio e ausência opaca', () => {
       expect(await response.text()).toBe(NOT_FOUND);
     }
   });
-  it.each([['patientId', ids.bruno], ['date', '2026-11-11'], ['status', 'PUBLISHED']])('rejects attempted history selection by %s', async (key, value) => {
+  it.each([['patientId', ids.bruno], ['date', '2026-11-11'], ['status', 'PUBLISHED'], ['scope', 'all']])('rejects attempted history selection by %s', async (key, value) => {
     await expectValidation(await call('GET', `/me/appointments?${key}=${value}`, { token: await ana() }), [issue('query', [key], 'UNKNOWN_FIELD')]);
   });
   it.each([ids.publishedAppointment, ids.draftAppointment, ids.missing])('rejects injected patientId even when a report is unavailable: %s', async (id) => {
     await expectValidation(await call('GET', `/me/appointments/${id}/report?patientId=${ids.ana}`, { token: await bruno() }), [issue('query', ['patientId'], 'UNKNOWN_FIELD')]);
+  });
+  it('rejects scope on a patient report before looking up the appointment', async () => {
+    await expectValidation(await call('GET', `/me/appointments/${ids.missing}/report?scope=all`, { token: await ana() }), [
+      issue('query', ['scope'], 'UNKNOWN_FIELD'),
+    ]);
   });
   it('keeps missing and draft list entries indistinguishable beyond appointment data', async () => {
     const token = await ana();
