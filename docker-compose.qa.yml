@@ -1,0 +1,79 @@
+# QA descartável: banco em memória, sem portas públicas e sem tocar na demo.
+# docker compose -p drlaudo-qa -f docker-compose.qa.yml run --rm api-test
+name: drlaudo-qa
+services:
+  db-test:
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+    environment:
+      POSTGRES_USER: drlaudo
+      POSTGRES_PASSWORD: drlaudo
+      POSTGRES_DB: drlaudo_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drlaudo -d drlaudo_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 12
+
+  api-test:
+    profiles: ["integration"]
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      target: qa
+    environment:
+      DATABASE_URL: postgresql://drlaudo:drlaudo@db-test:5432/drlaudo_test?schema=public
+      DATABASE_URL_TEST: postgresql://drlaudo:drlaudo@db-test:5432/drlaudo_test?schema=public
+      JWT_SECRET: qa-secret-with-at-least-32-characters-for-tests
+      NODE_ENV: test
+    depends_on:
+      db-test:
+        condition: service_healthy
+    command: ["npm", "test"]
+
+  # Optional disposable Nginx/API target for header and forwarding-header proof.
+  # `--profile http up --build --wait web` does not run the integration runner.
+  api:
+    profiles: ["http"]
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql://drlaudo:drlaudo@db-test:5432/drlaudo_test?schema=public
+      DATABASE_URL_TEST: postgresql://drlaudo:drlaudo@db-test:5432/drlaudo_test?schema=public
+      JWT_SECRET: qa-secret-with-at-least-32-characters-for-tests
+      HOST: 0.0.0.0
+      PORT: "3333"
+      TRUST_PROXY_HOPS: "1"
+      LOGIN_RATE_LIMIT_MAX: "10"
+      NODE_ENV: test
+    # Empty QA database: migrations only, never demo seed or demo volume.
+    command: ["sh", "-c", "npm run db:migrate && npm start"]
+    depends_on:
+      db-test:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3333/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  web:
+    profiles: ["http"]
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      target: runtime
+    ports:
+      - "127.0.0.1:${DRLAUDO_QA_HTTP_PORT:-18080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/api/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20

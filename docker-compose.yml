@@ -1,0 +1,56 @@
+# Stack completa de demonstração: http://localhost:8080
+# Sobe banco, aplica migration/seed e só então inicia API e web.
+services:
+  db:
+    image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+    environment:
+      POSTGRES_USER: drlaudo
+      POSTGRES_PASSWORD: drlaudo
+      POSTGRES_DB: drlaudo
+    volumes:
+      - drlaudo-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drlaudo -d drlaudo"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      target: runtime
+    environment:
+      DATABASE_URL: postgresql://drlaudo:drlaudo@db:5432/drlaudo?schema=public
+      JWT_SECRET: ${JWT_SECRET:-troque-este-segredo-de-demonstracao-com-32-caracteres}
+      HOST: 0.0.0.0
+      PORT: "3333"
+      # Only Nginx is exposed; it replaces forwarding headers before this hop.
+      TRUST_PROXY_HOPS: "1"
+      LOGIN_RATE_LIMIT_MAX: "10"
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3333/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    ports:
+      - "127.0.0.1:${DRLAUDO_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  drlaudo-data:

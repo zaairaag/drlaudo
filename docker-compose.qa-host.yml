@@ -1,0 +1,7 @@
+# Optional loopback connection for host-run API/Playwright tests.
+# Use only with docker-compose.qa.yml; pick a free DRLAUDO_QA_DB_PORT.
+# docker compose -p drlaudo-qa -f docker-compose.qa.yml -f docker-compose.qa-host.yml up -d db-test
+services:
+  db-test:
+    ports:
+      - "127.0.0.1:${DRLAUDO_QA_DB_PORT:-55433}:5432"

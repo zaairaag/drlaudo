@@ -1,0 +1,6 @@
+# Optional host tooling against the demo database; never loaded automatically.
+# docker compose -p drlaudo -f docker-compose.yml -f docker-compose.hybrid.yml up -d db
+services:
+  db:
+    ports:
+      - "127.0.0.1:${DRLAUDO_DB_PORT:-5433}:5432"
