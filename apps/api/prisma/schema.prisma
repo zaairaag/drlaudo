@@ -1,0 +1,83 @@
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STAFF
+  PATIENT
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CANCELED
+}
+
+enum ReportStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model User {
+  id           String   @id @db.Uuid
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  appointments Appointment[]
+
+  @@map("User")
+}
+
+model ExamType {
+  id   String @id @db.Uuid
+  code String @unique
+  name String
+
+  appointments Appointment[]
+
+  @@map("ExamType")
+}
+
+model Appointment {
+  id         String            @id @db.Uuid
+  patientId  String            @db.Uuid
+  examTypeId String            @db.Uuid
+  startsAt   DateTime          @db.Timestamptz(3)
+  status     AppointmentStatus @default(SCHEDULED)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  canceledAt DateTime?         @db.Timestamptz(3)
+
+  patient  User      @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  examType ExamType  @relation(fields: [examTypeId], references: [id], onDelete: Restrict)
+  report   Report?
+
+  @@index([startsAt])
+  @@index([patientId])
+  @@map("Appointment")
+}
+
+model Report {
+  id               String       @id @db.Uuid
+  appointmentId    String       @unique @db.Uuid
+  title            String
+  body             String       @db.Text
+  professionalName String
+  status           ReportStatus @default(DRAFT)
+  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime     @db.Timestamptz(3)
+  publishedAt      DateTime?    @db.Timestamptz(3)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@map("Report")
+}
