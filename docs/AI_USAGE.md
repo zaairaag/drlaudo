@@ -196,6 +196,7 @@ Modelo de entrada:
 **#21 — Repositório público autorizado** · 2026-11-09 · OMP/Kisha
 **Pedido:** “pode inclusive deixa ele publico e jogar tudo no ar”, referindo-se ao repositório do projeto e à publicação das atualizações.
 **Verificação e ação:** inventário atual de 234 arquivos e 325 blobs do histórico conferidos por padrões conhecidos de tokens/chaves privadas, sem ocorrências; nenhum caminho de ambiente privado encontrado no histórico. Essa busca não comprova ausência de todo tipo de segredo. `gh repo edit zaairaag/drlaudo --visibility public --accept-visibility-change-consequences` executado; consulta seguinte confirmou `PUBLIC`. README e TESTING atualizados para acesso público. Não houve envio de mensagem ao avaliador nem alteração de dados clínicos.
+**Achado na publicação:** a execução remota falhou antes de criar jobs. A anotação pública confirmou `Unrecognized named-value: 'job'` nas conexões QA declaradas no `env` do job. Correção mínima: resolver a porta dinâmica no contexto de um step e exportar ambas as conexões via `GITHUB_ENV`, preservando isolamento e banco real. A confirmação do CI depende da execução remota, não do resultado local anterior.
 
 
 ## Tempo dedicado ao exercício

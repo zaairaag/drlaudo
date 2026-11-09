@@ -32,8 +32,6 @@ jobs:
           --health-retries 12
 
     env:
-      DATABASE_URL: postgresql://drlaudo:drlaudo@127.0.0.1:${{ job.services.postgres.ports[5432] }}/drlaudo_test?schema=public
-      DATABASE_URL_TEST: postgresql://drlaudo:drlaudo@127.0.0.1:${{ job.services.postgres.ports[5432] }}/drlaudo_test?schema=public
       JWT_SECRET: ci-secret-with-at-least-32-characters!!
       TRUST_PROXY_HOPS: "0"
       VITE_API_MOCKING: "false"
@@ -42,6 +40,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
+      - name: Configure disposable PostgreSQL connection
+        env:
+          QA_DATABASE_URL: postgresql://drlaudo:drlaudo@127.0.0.1:${{ job.services.postgres.ports[5432] }}/drlaudo_test?schema=public
+        run: |
+          printf 'DATABASE_URL=%s\nDATABASE_URL_TEST=%s\n' "$QA_DATABASE_URL" "$QA_DATABASE_URL" >> "$GITHUB_ENV"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22.22.2"
