@@ -4,7 +4,7 @@
 
 Aplicação fictícia para desafio técnico. A equipe cadastra/edita pacientes, agenda/cancela exames e prepara/publica laudos. Pacientes consultam somente seus próprios agendamentos e laudos publicados. **Não usar dados clínicos reais.**
 
-**Stack:** React + TypeScript + RTK Query; Node 22.22.2 + Fastify 5; Prisma 7 + PostgreSQL 16. Contrato Zod compartilhado, testes Vitest e Playwright/axe. [Enunciado](docs/DESAFIO.md) · [Requisitos](docs/PRD.md) · [Evidências e limites](docs/TESTING.md).
+**Demo online:** <https://drlaudo.zairagoncalves.com> · **Stack:** React + TypeScript + RTK Query; Node 22.22.2 + Fastify 5; Prisma 7 + PostgreSQL 16. Contrato Zod compartilhado, testes Vitest e Playwright/axe. [Enunciado](docs/DESAFIO.md) · [Requisitos](docs/PRD.md) · [Evidências e limites](docs/TESTING.md).
 
 ## Executar com Docker
 
