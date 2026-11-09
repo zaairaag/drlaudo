@@ -1,4 +1,5 @@
 import {
+  AppointmentListQuerySchema,
   CLINIC_TZ,
   CreatePatientRequestSchema,
   ExamTypeListResponseSchema,
@@ -668,41 +669,25 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
       if (!auth.ok) return auth.response;
       if (auth.user.role !== 'STAFF') return errorResponse('FORBIDDEN', 403);
 
-      const qResult = parseAndValidateQuery(request.url, { allowed: ['date', 'patientId'] });
+      const qResult = parseAndValidateQuery(request.url, { allowed: ['date', 'patientId', 'scope'] });
+      const query = qResult.ok ? AppointmentListQuerySchema.safeParse(qResult.params) : undefined;
       const bIssues = await validateNoBody(request);
       const issues = [...(qResult.ok ? [] : qResult.issues), ...bIssues];
-
-      let filterDate: string | undefined;
-      let filterPatientId: string | undefined;
-
-      if (qResult.ok) {
-        if (qResult.params['date']) {
-          const parsed = LocalDateSchema.safeParse(qResult.params['date']);
-          if (!parsed.success) issues.push(createIssue('query', ['date'], 'INVALID_FORMAT'));
-          else filterDate = parsed.data;
-        }
-        if (qResult.params['patientId']) {
-          const parsed = UUIDSchema.safeParse(qResult.params['patientId']);
-          if (!parsed.success) issues.push(createIssue('query', ['patientId'], 'INVALID_FORMAT'));
-          else filterPatientId = parsed.data;
+      if (query && !query.success) {
+        for (const issue of query.error.issues) {
+          issues.push(createIssue('query', issue.path.map(String), 'INVALID_FORMAT'));
         }
       }
+      if (!query?.success || issues.length > 0) return validationErrorResponse(issues);
 
-      if (issues.length > 0) return validationErrorResponse(issues);
-
-      const now = clock.now().toISOString();
-      let rangeFrom: string;
-      let rangeTo: string;
-
-      if (filterDate) {
-        const range = localDayRange(filterDate);
-        rangeFrom = range.from.toISOString();
-        rangeTo = range.to.toISOString();
-      } else {
-        const range = defaultAgendaRange(now);
-        rangeFrom = range.from.toISOString();
-        rangeTo = range.to.toISOString();
-      }
+      const filterPatientId = query.data.patientId;
+      const range = query.data.scope === 'all'
+        ? undefined
+        : query.data.date
+          ? localDayRange(query.data.date)
+          : defaultAgendaRange(clock.now().toISOString());
+      const rangeFrom = range?.from.toISOString();
+      const rangeTo = range?.to.toISOString();
 
       if (filterPatientId) {
         const patientExists = db.users.some((u) => u.id === filterPatientId && u.role === 'PATIENT');
@@ -710,7 +695,7 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
       }
 
       const filtered = db.appointments.filter((a) => {
-        if (a.startsAt < rangeFrom || a.startsAt >= rangeTo) return false;
+        if (rangeFrom && rangeTo && (a.startsAt < rangeFrom || a.startsAt >= rangeTo)) return false;
         if (filterPatientId && a.patientId !== filterPatientId) return false;
         return true;
       });

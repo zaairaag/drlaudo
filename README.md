@@ -12,6 +12,8 @@ Abra a demo online acima, selecione um perfil demonstrativo e clique em **Entrar
 
 Na agenda, selecione **10/11/2026** para consultar a massa inicial desta implantação. O seed é idempotente e não desloca datas; como as contas são públicas, alterações feitas por visitantes podem mudar a demonstração.
 
+Para consultar o histórico completo da equipe, clique em **Ver todos os agendamentos**. O filtro **Paciente** continua disponível; a lista mostra a data e o horário de cada exame. Para voltar à agenda diária, escolha uma data ou clique em **Hoje**. O modo e o paciente são preservados ao abrir e voltar de um laudo. O portal do paciente continua mostrando apenas seu próprio histórico.
+
 ## Executar com Docker
 
 Na raiz do repositório:

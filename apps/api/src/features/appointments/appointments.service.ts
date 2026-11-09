@@ -25,13 +25,14 @@ export interface AppointmentsDeps {
 export function createAppointmentsService({ prisma, clock }: AppointmentsDeps) {
   return {
     async list(query: AppointmentListQuery): Promise<StaffAppointment[]> {
-      const now = clock.now().toISOString();
-      const range = query.date
-        ? localDayRange(query.date)
-        : defaultAgendaRange(now);
+      const range = query.scope === 'all'
+        ? undefined
+        : query.date
+          ? localDayRange(query.date)
+          : defaultAgendaRange(clock.now().toISOString());
       const rows = await prisma.appointment.findMany({
         where: {
-          startsAt: { gte: range.from, lt: range.to },
+          ...(range ? { startsAt: { gte: range.from, lt: range.to } } : {}),
           ...(query.patientId ? { patientId: query.patientId } : {}),
         },
         orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],

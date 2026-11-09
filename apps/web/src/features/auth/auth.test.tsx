@@ -148,8 +148,10 @@ describe('login e navegação autorizada', () => {
   });
   it.each([
     `/agenda?date=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agenda?scope=all&patientId=${appointment.patient.id}`,
     `/agendamentos/novo?date=2026-11-10&patientId=${appointment.patient.id}`,
     `/agendamentos/${appointment.id}/laudo?date=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agendamentos/${appointment.id}/laudo?scope=all&patientId=${appointment.patient.id}`,
   ])('retoma a URL privada completa após login: %s', async (destination) => {
     defaultFetch();
     const { router, user } = openApp(destination);
@@ -161,6 +163,9 @@ describe('login e navegação autorizada', () => {
     `/agendamentos/novo?date=2026-11-10&patientId=${appointment.patient.id}`,
     `/agendamentos/${appointment.id}/laudo?date=2026-11-10&patientId=${appointment.patient.id}`,
     `/agenda?date=2026-11-10&patientId=${appointment.patient.id}&focus=${appointment.id}`,
+    '/agenda?scope=all',
+    `/agenda?scope=all&patientId=${appointment.patient.id}`,
+    `/agendamentos/${appointment.id}/laudo?scope=all&patientId=${appointment.patient.id}`,
     '/pacientes',
   ])('retorno por query aceita contexto emitido pela aplicação: %s', async (destination) => {
     defaultFetch();
@@ -172,6 +177,8 @@ describe('login e navegação autorizada', () => {
   it.each([
     '/\\evil.test/agenda', '/%2f%2fevil.test/agenda', '/agenda#https://evil.test',
     '/agenda?date=2026-11-10&date=2026-11-11',
+    '/agendamentos/novo?scope=all',
+    `/agendamentos/novo?scope=all&patientId=${appointment.patient.id}`,
     '/agendamentos/novo?date=2026-11-10&patientId=invalid',
     `/agendamentos/${appointment.id}/laudo?date=2026-11-10&returnTo=https://evil.test`,
   ])('descarta retorno adulterado sem navegação externa: %s', async (destination) => {

@@ -205,6 +205,12 @@ Modelo de entrada:
 **RED/GREEN:** regressão com relógio/timers controlados reproduziu um disparo antecipado em1ms: esperava anonymous e recebeu authenticated. O primeiro ensaio parou na espera de uma página lazy, corrigida na preparação sem mudar o oráculo. O callback passou a recalcular/agendar o restante e limpar o timer anterior. Arquivo auth completo passou50/50. Sem suprimir testes, alterar timeouts ou retries, nem modificar regras HTTP/JWT do backend.
 **Gates locais:** lint, typecheck e check:arch passaram; suíte web425/425 em19arquivos. Verificação remota completa será vinculada à revisão corrigida, sem reaproveitar o sucesso de uma revisão anterior como prova desta mudança.
 
+**#23 — Agenda completa para a equipe** · 2026-11-09 · OMP/Kisha, Mario e Marquinho
+**Pedido e plano aprovados:** manter agenda diária, adicionar “Ver todos os agendamentos” com filtro por paciente, preservar retorno contextual, ajustar Git e implantar na VPS. Complemento registrado no PRD/TASKS e API; sem intervalo, paginação, migração ou alteração de acesso PATIENT.
+**Teste primeiro:** contrato falhou em três casos pela ausência de scope; API falhou nos detalhes strict de scope; frontend falhou em26casos por botão ausente, scope descartado e retorno convertido em data. Após liberação, Mario implementou contrato/API/MSW e Marquinho interface/transporte/retorno seguro. A coordenação manteve docs, E2E, banco QA separado e execução dos gates.
+**Provas parciais observadas:** contrato531/531, API339/339 sobre PostgreSQL16 real descartável e handlersMSW209/209. Resultados da interface/build/E2E e implantação são registrados somente após execução, sem considerar a simulação como prova de banco.
+**Gates locais completos:** lint/typecheck/build/check:arch verdes; web499/499 e E2E39/39, total1.408 com contrato/API. Navegador real confirmou modo completo/paciente/datas e reflow375/720px sem scroll horizontal/erros de console. E2E incluiu exame90dias distante cancelado, filtros e ida/volta do laudo. Preservados avisos de bundle e pg; sem novas dependências.
+
 
 ## Tempo dedicado ao exercício
 

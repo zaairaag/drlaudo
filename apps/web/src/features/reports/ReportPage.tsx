@@ -32,6 +32,7 @@ export function ReportPage() {
   // Contexto de navegação da tela; não integra as consultas de detalhe/laudo.
   const requestedDate = LocalDateSchema.safeParse(params.get('date'));
   const requestedPatient = UUIDSchema.safeParse(params.get('patientId'));
+  const allAppointments = params.getAll('scope').length === 1 && params.get('scope') === 'all' && !params.has('date');
   const confirmedAppointment = appointmentQuery.currentData?.id === id ? appointmentQuery.currentData : undefined;
   const returnDate = requestedDate.success && params.getAll('date').length === 1
     ? requestedDate.data
@@ -39,7 +40,7 @@ export function ReportPage() {
   const returnPatientId = requestedPatient.success && params.getAll('patientId').length === 1
     ? requestedPatient.data : null;
   const agendaParams = new URLSearchParams({
-    ...(returnDate ? { date: returnDate } : {}),
+    ...(allAppointments ? { scope: 'all' } : returnDate ? { date: returnDate } : {}),
     ...(returnPatientId ? { patientId: returnPatientId } : {}),
   });
   const agendaHref = `/agenda${agendaParams.size ? `?${agendaParams}` : ''}`;

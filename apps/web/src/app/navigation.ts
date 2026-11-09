@@ -16,7 +16,8 @@ export function safeReturnTo(value: unknown, role: Role) {
       if (url.pathname === '/agenda' && AppointmentListQuerySchema.safeParse(context).success
         && (focus === undefined || UUIDSchema.safeParse(focus).success)) return url.pathname + url.search;
       if (url.pathname === '/pacientes' && !url.search) return url.pathname;
-      if (url.pathname === '/agendamentos/novo' && AppointmentListQuerySchema.safeParse(params).success) return url.pathname + url.search;
+      if (url.pathname === '/agendamentos/novo' && !url.searchParams.has('scope')
+        && AppointmentListQuerySchema.safeParse(params).success) return url.pathname + url.search;
       const match = /^\/agendamentos\/([^/]+)\/laudo$/.exec(url.pathname);
       if (match?.[1] && UUIDSchema.safeParse(decodeURIComponent(match[1])).success
         && AppointmentListQuerySchema.safeParse(params).success) return url.pathname + url.search;

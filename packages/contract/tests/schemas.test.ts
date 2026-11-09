@@ -356,7 +356,10 @@ describe('E1 E2 RF-03 RF-04 RF-05 RN-12: agendamento strict e estados coerentes'
   ])('rejeita criação ampliada, nula ou malformada: %j', (value) => {
     expect(CreateAppointmentRequestSchema.safeParse(value).success).toBe(false);
   });
-  it.each([{}, { date: '0001-01-01' }, { patientId: id }, { date: '9999-12-31', patientId: id }])(
+  it.each([
+    {}, { date: '0001-01-01' }, { patientId: id }, { date: '9999-12-31', patientId: id },
+    { scope: 'all' }, { scope: 'all', patientId: id },
+  ])(
     'aceita somente filtros opcionais explícitos: %j', (value) => {
       expect(AppointmentListQuerySchema.parse(value)).toEqual(value);
     },
@@ -367,6 +370,22 @@ describe('E1 E2 RF-03 RF-04 RF-05 RN-12: agendamento strict e estados coerentes'
     { status: 'SCHEDULED' }, { from: '2026-11-10' }, { page: '1' }, { sort: 'startsAt' },
   ])('não aceita null, filtro implícito, vazio ou undefined presente: %j', (value) => {
     expect(AppointmentListQuerySchema.safeParse(value).success).toBe(false);
+  });
+  it.each([
+    { scope: '' }, { scope: 'ALL' }, { scope: 'daily' }, { scope: ' all' }, { scope: 'all ' },
+    { scope: null }, { scope: undefined }, { scope: true }, { scope: 1 }, { scope: ['all'] },
+    { scope: {} }, { scope: 'all', patientId: null }, { scope: 'all', patientId: undefined },
+    { scope: 'all', status: 'SCHEDULED' },
+  ])('rejeita scope não literal ou filtros inválidos sem coerção: %j', (value) => {
+    expect(AppointmentListQuerySchema.safeParse(value).success).toBe(false);
+  });
+  it('rejeita date junto com scope=all no caminho date, sem descartar nenhum filtro', () => {
+    const result = AppointmentListQuerySchema.safeParse({ scope: 'all', date: '2026-11-10', patientId: id });
+    expect(result.success).toBe(false);
+    if (result.success) throw new Error('A combinação de modos deve ser inválida');
+    expect(result.error.issues).toEqual([
+      expect.objectContaining({ path: ['date'], code: 'custom', params: { rule: 'INVALID_FORMAT' } }),
+    ]);
   });
   it('listas STAFF aceitam vazio, cancelado e passado sem impor janela ao DTO', () => {
     expect(StaffAppointmentListResponseSchema.parse([])).toEqual([]);

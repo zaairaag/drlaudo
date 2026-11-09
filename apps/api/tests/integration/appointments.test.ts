@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { StaffAppointmentSchema, type StaffAppointment } from '@drlaudo/contract';
+import { StaffAppointmentListResponseSchema, StaffAppointmentSchema, type StaffAppointment } from '@drlaudo/contract';
 import { buildApp } from '../../src/app.ts';
 import {
   QA, auth, buildTestApp, login, testPrisma, useIsolatedDatabase,
@@ -308,6 +308,88 @@ describe('RF-04/RN-25 · consulta e grade', () => {
     expect(filtered.json<{ patient: { id: string } }[]>()).toHaveLength(1);
     expect(filtered.json<{ patient: { id: string } }[]>()[0]?.patient.id).toBe(QA.anaId);
   });
+});
+
+describe('RF-04 · agenda completa STAFF com scope explícito', () => {
+  const ids = {
+    past: '8a000000-0000-4000-8000-000000000001',
+    today: '8a000000-0000-4000-8000-000000000002',
+    canceledA: '8a000000-0000-4000-8000-000000000003',
+    canceledB: '8a000000-0000-4000-8000-000000000004',
+    future: '8a000000-0000-4000-8000-000000000005',
+  };
+
+  it.each([
+    { label: 'todos os pacientes', query: 'scope=all', expectedIds: [ids.past, ids.today, ids.canceledA, ids.canceledB, ids.future] },
+    { label: 'paciente selecionado', query: `scope=all&patientId=${QA.anaId}`, expectedIds: [ids.past, ids.today, ids.canceledA] },
+    { label: 'paciente inexistente', query: 'scope=all&patientId=ffffffff-ffff-4fff-8fff-ffffffffffff', expectedIds: [] },
+    { label: 'id de STAFF', query: `scope=all&patientId=${QA.staffId}`, expectedIds: [] },
+  ])('consulta passado distante, futuro e cancelados em ordem estável para $label', async ({ query, expectedIds }) => {
+    const { app, token } = await staffToken();
+    const base = { patientId: QA.anaId, examTypeId: QA.xrayId, createdAt: new Date(QA.now) };
+    await testPrisma().appointment.createMany({ data: [
+      { ...base, id: ids.future, patientId: QA.brunoId, startsAt: new Date('2030-11-10T13:00:00.000Z') },
+      { ...base, id: ids.canceledB, patientId: QA.brunoId, startsAt: new Date('2028-11-10T13:00:00.000Z'), status: 'CANCELED', canceledAt: new Date(QA.now) },
+      { ...base, id: ids.today, startsAt: new Date(FUTURE) },
+      { ...base, id: ids.canceledA, startsAt: new Date('2028-11-10T13:00:00.000Z'), status: 'CANCELED', canceledAt: new Date(QA.now) },
+      { ...base, id: ids.past, startsAt: new Date('2020-11-10T13:00:00.000Z') },
+    ] });
+
+    const response = await app.inject({ method: 'GET', url: `/appointments?${query}`, headers: auth(token) });
+    expect(response.statusCode).toBe(200);
+    const result = StaffAppointmentListResponseSchema.parse(response.json());
+    expect(result.map((item) => item.id)).toEqual(expectedIds);
+  });
+
+  it.each(['', 'ALL', 'daily', 'null', 'undefined', 'true', '1', '%20all', 'all%20'])(
+    'rejeita scope=%s como INVALID_FORMAT em vez de ignorar ou converter', async (scope) => {
+      const { app, token } = await staffToken();
+      const response = await app.inject({ method: 'GET', url: `/appointments?scope=${scope}`, headers: auth(token) });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.details).toEqual([{
+        location: 'query', path: ['scope'], rule: 'INVALID_FORMAT', message: 'Formato de valor inválido.',
+      }]);
+    },
+  );
+
+  it.each([
+    { query: 'scope=all&date=2026-11-10', path: 'date', rule: 'INVALID_FORMAT', message: 'Formato de valor inválido.' },
+    { query: `date=2026-11-10&scope=all&patientId=${QA.anaId}`, path: 'date', rule: 'INVALID_FORMAT', message: 'Formato de valor inválido.' },
+    { query: 'scope=all&patientId=invalido', path: 'patientId', rule: 'INVALID_FORMAT', message: 'Formato de valor inválido.' },
+    { query: 'scope=all&patientId=', path: 'patientId', rule: 'INVALID_FORMAT', message: 'Formato de valor inválido.' },
+    { query: 'scope=all&extra=true', path: 'extra', rule: 'UNKNOWN_FIELD', message: 'Campo não permitido.' },
+    { query: 'scope=all&scope=all', path: 'scope', rule: 'DUPLICATE_QUERY', message: 'Informe este parâmetro uma única vez.' },
+    { query: 'scope=all&scope=invalido', path: 'scope', rule: 'DUPLICATE_QUERY', message: 'Informe este parâmetro uma única vez.' },
+    { query: 'scope=all&date=2026-11-10&date=2026-11-10', path: 'date', rule: 'DUPLICATE_QUERY', message: 'Informe este parâmetro uma única vez.' },
+    { query: `scope=all&patientId=${QA.anaId}&patientId=${QA.brunoId}`, path: 'patientId', rule: 'DUPLICATE_QUERY', message: 'Informe este parâmetro uma única vez.' },
+  ])('$query preserva a validação strict e a precedência de duplicatas', async ({ query, path, rule, message }) => {
+    const { app, token } = await staffToken();
+    const response = await app.inject({ method: 'GET', url: `/appointments?${query}`, headers: auth(token) });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.details).toEqual([{ location: 'query', path: [path], rule, message }]);
+  });
+
+  it('PATIENT não acessa a consulta completa da equipe', async () => {
+    const app = await buildTestApp();
+    const token = await login(app, 'ana@qa.test');
+    const response = await app.inject({ method: 'GET', url: '/appointments?scope=all', headers: auth(token) });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({
+      error: { code: 'FORBIDDEN', message: 'Você não tem permissão para esta ação.' },
+    });
+  });
+
+  it.each(['/me/appointments', `/me/appointments/${QA.anaId}/report`])(
+    '%s continua rejeitando scope como filtro desconhecido', async (url) => {
+      const app = await buildTestApp();
+      const token = await login(app, 'ana@qa.test');
+      const response = await app.inject({ method: 'GET', url: `${url}?scope=all`, headers: auth(token) });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().error.details).toEqual([{
+        location: 'query', path: ['scope'], rule: 'UNKNOWN_FIELD', message: 'Campo não permitido.',
+      }]);
+    },
+  );
 });
 
 describe('Atomicidade da mutação e validação do DTO', () => {

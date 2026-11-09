@@ -95,6 +95,8 @@ Limiter é por IP, 10 tentativas/60s por padrão, inclusive sucesso/erro de form
 
 UTC na API/banco; calendário/exibição em `America/Sao_Paulo`, independente do host/browser. Grade 07:00–18:30, inícios hh:00/hh:30 e segundos/ms zero; startsAt <= now é passado. Helpers IANA únicos no contrato; sem offset fixo. Transições históricas omitem posições civis inexistentes. Calendário 0001–9999, fim exclusivo interno pode ser Date do ano10000. Janela padrão é hoje local mais 29 dias, não 720 horas.
 
+Consulta completa STAFF é explícita por `scope=all`, mutuamente exclusiva de `date`. Nesse modo, a consulta Prisma omite o predicado startsAt e mantém patientId opcional, DTO/select e ordenação. A ausência de ambos conserva a janela padrão. A agenda diária continua padrão da UI; o modo completo usa URL recuperável e datas/horas em cada registro. Nenhuma mudança em `/me/*`, permissões ou dados persistidos.
+
 RTK Query mantém servidor apenas em memória. `drlaudo.session` armazena só LoginResponse; nunca senha, texto clínico, filtros ou listas. F5 restaura por `/auth/me` antes de dados privados. Logout/troca/expiração/storage abortam requests, avançam geração, resetam cache e descartam respostas antigas. Logout local não revoga JWT; risco explícito da demo.
 
 O timer de expiração recalcula o tempo restante em cada disparo e ao recuperar foco/visibilidade. Se disparar antes do prazo civil do token, agenda novamente o restante; não deixa a sessão ativa indefinidamente por uma diferença entre relógio civil e timer. Ao expirar, mantém a mesma fronteira de geração, cancelamento de requests e limpeza de sessão/cache.

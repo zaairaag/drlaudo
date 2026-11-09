@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { generateDaySlots, type StaffAppointment } from '@drlaudo/contract';
 import { CancelDialog } from '../../components/product/CancelDialog';
@@ -11,6 +11,7 @@ import { api } from '../../app/api';
 import { setSession } from '../../app/authSlice';
 import { makeSession } from '../../app/testFixtures';
 import { AgendaPage } from './AgendaPage';
+import { ReportPage } from '../reports/ReportPage';
 import { todayDate } from '../../lib/time';
 
 const resources: { store: AppStore; router: { dispose: () => void } }[] = [];
@@ -80,16 +81,169 @@ function openAgenda(path: string, options: { state?: unknown; loadAppointments?:
   store.dispatch(setSession(makeSession('STAFF')));
   const router = createMemoryRouter([
     { path: '/agenda', element: <AgendaPage /> },
-    { path: '/agendamentos/:id/laudo', element: <h1>Detalhe do agendamento</h1> },
+    { path: '/agendamentos/:id/laudo', element: <ReportPage /> },
   ], { initialEntries: [{ ...parsePath(path), state: options.state }] });
   resources.push({ store, router });
   const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+    const path = new URL(String(url), 'http://localhost').pathname;
+    if (path === `/api/appointments/${appointment.id}/report`) return Response.json({
+      error: { code: 'NOT_FOUND', message: 'Não encontramos este registro' },
+    }, { status: 404 });
+    if (path === `/api/appointments/${appointment.id}`) return Response.json(appointment);
     if (String(url).includes('/patients')) return options.loadPatients ? options.loadPatients() : Response.json([{ ...appointment.patient, email: 'ana.souza@drlaudo.test' }]);
     return options.loadAppointments ? options.loadAppointments() : Response.json([appointment]);
   });
   render(<Provider store={store}><RouterProvider router={router} /></Provider>);
   return { store, router, fetch, user: userEvent.setup() };
 }
+
+describe('Todos os agendamentos', () => {
+  it('troca o dia pelo modo completo sem perder o paciente nem levar scope à criação', async () => {
+    const { router, fetch, user } = openAgenda(`/agenda?date=2026-11-10&patientId=${appointment.patient.id}`);
+    await screen.findAllByRole('link', { name: 'Criar laudo' });
+    const all = screen.getByRole('button', { name: 'Ver todos os agendamentos' });
+    expect(all).toHaveAttribute('aria-pressed', 'false');
+
+    all.focus();
+    await user.keyboard(' ');
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Todos os agendamentos' })).toBeVisible();
+    expect(all).toHaveAttribute('aria-pressed', 'true');
+    expect(all).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByLabelText('Data')).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Paciente' })).toHaveValue(appointment.patient.id);
+    expect(screen.getByText('Ana Souza', { selector: 'p' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Dia anterior' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Próximo dia' })).toBeDisabled();
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${appointment.patient.id}`);
+    await screen.findAllByRole('link', { name: 'Criar laudo' });
+    expect(fetch.mock.calls.map(([url]) => String(url))).toContain(`/api/appointments?scope=all&patientId=${appointment.patient.id}`);
+    expect(screen.getByRole('link', { name: 'Novo agendamento' })).toHaveAttribute('href', `/agendamentos/novo?date=${todayDate()}&patientId=${appointment.patient.id}`);
+  });
+
+  it.each(['', `&patientId=${appointment.patient.id}`])('restaura o modo completo pela URL após recarga: %s', async (patientQuery) => {
+    const path = `/agenda?scope=all${patientQuery}`;
+    const { router, fetch } = openAgenda(path);
+    const links = await screen.findAllByRole('link', { name: 'Criar laudo' });
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Todos os agendamentos' })).toBeVisible();
+    expect(screen.getByLabelText('Data')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Ver todos os agendamentos' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText(patientQuery ? 'Ana Souza' : 'Todos os pacientes', { selector: 'p' })).toBeVisible();
+    expect(router.state.location.pathname + router.state.location.search).toBe(path);
+    expect(fetch.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/appointments'))).toEqual([`/api/appointments?scope=all${patientQuery}`]);
+    for (const link of links) expect(link).toHaveAttribute('href', `/agendamentos/${appointment.id}/laudo?scope=all${patientQuery}`);
+  });
+
+  it('muda e limpa o paciente sem abandonar todos os agendamentos', async () => {
+    const otherPatient = { id: '10000000-0000-4000-8000-000000000003', name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test' };
+    const { router, user } = openAgenda(`/agenda?scope=all&patientId=${appointment.patient.id}`, {
+      loadPatients: async () => Response.json([{ ...appointment.patient, email: 'ana.souza@drlaudo.test' }, otherPatient]),
+    });
+    const patient = screen.getByRole('combobox', { name: 'Paciente' });
+    await waitFor(() => expect(patient).toBeEnabled());
+
+    await user.selectOptions(patient, otherPatient.id);
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${otherPatient.id}`);
+    expect(screen.getByText('Bruno Lima', { selector: 'p' })).toBeVisible();
+    expect(screen.getByLabelText('Data')).toHaveValue('');
+
+    await user.selectOptions(patient, '');
+    expect(router.state.location.search).toBe('?scope=all');
+    expect(screen.getByText('Todos os pacientes', { selector: 'p' })).toBeVisible();
+    expect(screen.getByRole('heading', { level: 2, name: 'Todos os agendamentos' })).toBeVisible();
+  });
+
+  it.each(['Hoje', 'Data'])('%s volta ao modo diário e conserva o paciente', async (control) => {
+    const { router, user } = openAgenda(`/agenda?scope=all&patientId=${appointment.patient.id}`);
+    await screen.findAllByRole('link', { name: 'Criar laudo' });
+
+    if (control === 'Hoje') await user.click(screen.getByRole('button', { name: 'Hoje' }));
+    else fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2026-12-15' } });
+
+    const date = control === 'Hoje' ? todayDate() : '2026-12-15';
+    expect(router.state.location.search).toBe(`?date=${date}&patientId=${appointment.patient.id}`);
+    expect(screen.getByLabelText('Data')).toHaveValue(date);
+    expect(screen.getByRole('button', { name: 'Ver todos os agendamentos' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Hoje' })).toHaveAttribute('aria-pressed', String(control === 'Hoje'));
+    expect(screen.getByRole('button', { name: 'Próximo dia' })).toBeEnabled();
+    expect(screen.queryByRole('heading', { level: 2, name: 'Todos os agendamentos' })).not.toBeInTheDocument();
+  });
+
+  it('restaura modo e filtros ao voltar e avançar no histórico', async () => {
+    const { router, user } = openAgenda(`/agenda?date=2026-11-10&patientId=${appointment.patient.id}`);
+    await screen.findAllByRole('link', { name: 'Criar laudo' });
+    await user.click(screen.getByRole('button', { name: 'Ver todos os agendamentos' }));
+    await screen.findByRole('heading', { level: 2, name: 'Todos os agendamentos' });
+    await user.click(screen.getByRole('button', { name: 'Hoje' }));
+
+    await act(async () => { await router.navigate(-1); });
+    expect(screen.getByRole('heading', { level: 2, name: 'Todos os agendamentos' })).toBeVisible();
+    expect(screen.getByLabelText('Data')).toHaveValue('');
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${appointment.patient.id}`);
+
+    await act(async () => { await router.navigate(-1); });
+    expect(screen.getByLabelText('Data')).toHaveValue('2026-11-10');
+    expect(router.state.location.search).toBe(`?date=2026-11-10&patientId=${appointment.patient.id}`);
+
+    await act(async () => { await router.navigate(1); });
+    expect(screen.getByRole('heading', { level: 2, name: 'Todos os agendamentos' })).toBeVisible();
+    expect(screen.getByRole('combobox', { name: 'Paciente' })).toHaveValue(appointment.patient.id);
+  });
+
+  it('expõe data e horário de passado, futuro e cancelado na tabela e nos cartões', async () => {
+    const past = { ...appointment, id: '30000000-0000-4000-8000-000000000002', startsAt: '2026-01-02T01:30:00.000Z' };
+    const future = { ...appointment, id: '30000000-0000-4000-8000-000000000003', startsAt: '2027-02-20T13:00:00.000Z', status: 'CANCELED' };
+    openAgenda('/agenda?scope=all', { loadAppointments: async () => Response.json([past, appointment, future]) });
+    await screen.findAllByRole('link', { name: 'Ver agendamento' });
+    const rows = screen.getAllByRole('row').slice(1);
+    const cards = screen.getAllByRole('article');
+    expect(rows).toHaveLength(3);
+    expect(cards).toHaveLength(3);
+    for (const items of [rows, cards]) {
+      for (const [index, date, time] of [[0, '01/01/2026', '22:30'], [1, '10/11/2026', '10:00'], [2, '20/02/2027', '10:00']] as const) {
+        expect(within(items[index]!).getByText(date)).toBeVisible();
+        expect(within(items[index]!).getByText(time)).toBeVisible();
+      }
+      expect(within(items[2]!).getByText('Cancelado')).toBeVisible();
+    }
+  });
+
+  it('abre o laudo pela lista mobile e volta ao modo completo com o mesmo paciente', async () => {
+    const { router, user } = openAgenda(`/agenda?scope=all&patientId=${appointment.patient.id}`);
+    const links = await screen.findAllByRole('link', { name: 'Criar laudo' });
+    await user.click(links[1]!);
+    await screen.findByLabelText('Título');
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${appointment.patient.id}`);
+
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+
+    expect(await screen.findByRole('heading', { level: 2, name: 'Todos os agendamentos' })).toBeVisible();
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${appointment.patient.id}`);
+    expect(screen.getByLabelText('Data')).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Paciente' })).toHaveValue(appointment.patient.id);
+  });
+
+  it.each([
+    'scope=',
+    'scope=ALL',
+    'scope=daily',
+    'scope=all&scope=all',
+    'scope=all&scope=daily',
+    'scope=all&date=2026-11-10',
+    'scope=all&date=',
+    'scope=all&patientId=invalido',
+    `scope=all&patientId=${appointment.patient.id}&patientId=${appointment.patient.id}`,
+  ])('exibe erro sem consultar agendamentos nem reescrever filtros inválidos: %s', async (query) => {
+    const { router, fetch } = openAgenda(`/agenda?${query}`);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Os filtros informados são inválidos.');
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Paciente' })).toBeEnabled());
+    expect(router.state.location.search).toBe(`?${query}`);
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url), 'http://localhost').pathname)).not.toContain('/api/appointments');
+    expect(screen.queryByRole('link', { name: /Criar laudo|Editar laudo|Ver laudo|Ver agendamento/ })).not.toBeInTheDocument();
+  });
+});
 
 describe('Continuidade da agenda', () => {
   it('localiza o agendamento recém-criado e oferece abrir o registro correto', async () => {

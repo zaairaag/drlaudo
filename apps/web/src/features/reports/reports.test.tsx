@@ -131,6 +131,69 @@ describe('Retorno contextual à agenda', () => {
     expect(router.state.location.search).toBe(`?date=2026-11-10&patientId=${baseAppointment.patient.id}`);
   });
 
+  it.each(['DRAFT', 'PUBLISHED', 'CANCELED'] as const)('retoma todos os agendamentos com o paciente após abertura direta de %s', async (state) => {
+    const report = state === 'PUBLISHED' ? basePublishedReport : baseDraftReport;
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? jsonResponse(report)
+        : jsonResponse({
+          ...baseAppointment,
+          status: state === 'CANCELED' ? 'CANCELED' : 'SCHEDULED',
+          report: { id: report.id, status: report.status },
+        }),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?scope=all&patientId=${baseAppointment.patient.id}`],
+    });
+
+    await user.click(await screen.findByRole('link', { name: 'Voltar para agenda' }));
+
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${baseAppointment.patient.id}`);
+    for (const [url] of fetch.mock.calls) expect(new URL(String(url), 'http://localhost').search).toBe('');
+  });
+
+  it('retorna ao modo completo sem inventar data ou paciente ao abrir um rascunho novo', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? errorResponse('NOT_FOUND', 'Não encontramos este registro', 404)
+        : jsonResponse(baseAppointment),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?scope=all`],
+    });
+    await screen.findByLabelText('Título');
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    expect(router.state.location.search).toBe('?scope=all');
+  });
+
+  it.each([404, 500])('erro %s sem detalhe mantém o modo completo e paciente da URL', async (status) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      errorResponse(
+        status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR',
+        status === 404 ? 'Não encontramos este registro' : 'Não foi possível concluir a solicitação.',
+        status,
+      ),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?scope=all&patientId=${baseAppointment.patient.id}`],
+    });
+    await screen.findByText(status === 404 ? 'Não encontramos este registro' : 'Algo deu errado. Tente novamente em instantes.');
+    await user.click(screen.getByRole('link', { name: /voltar para (a )?agenda/i }));
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${baseAppointment.patient.id}`);
+  });
+
+  it('falha de leitura do laudo não converte todos os agendamentos no dia do exame', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? errorResponse('INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', 500)
+        : jsonResponse(baseAppointment),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?scope=all&patientId=${baseAppointment.patient.id}`],
+    });
+    await screen.findByText('Não foi possível carregar os dados do laudo. Tente novamente.');
+    await user.click(screen.getByRole('link', { name: /voltar para (a )?agenda/i }));
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${baseAppointment.patient.id}`);
+  });
+
   it('abertura direta volta ao dia do exame sem inventar filtro de paciente', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
       String(url).endsWith('/report') ? jsonResponse(basePublishedReport)

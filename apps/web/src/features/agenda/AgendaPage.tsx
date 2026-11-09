@@ -15,7 +15,7 @@ import { StatusBadge } from '../../components/product/StatusBadge';
 import { EmptyState } from '../../components/product/EmptyState';
 import { TimezoneNote } from '../../components/product/TimezoneNote';
 import { CancelDialog } from '../../components/product/CancelDialog';
-import { formatDateTime, formatLongDate, formatTime, shiftDate, todayDate } from '../../lib/time';
+import { formatDate, formatDateTime, formatLongDate, formatTime, shiftDate, todayDate } from '../../lib/time';
 import { getErrorMessage } from '../../lib/errors';
 
 function reportAction(appointment: StaffAppointment) {
@@ -34,14 +34,23 @@ export function AgendaPage() {
     ? navigationState.createdAppointmentId : null;
   const focusId = params.getAll('focus').length === 1 ? params.get('focus') : null;
   const today = todayDate();
-  const selectedDate = params.get('date') ?? today;
+  const scope = params.get('scope');
+  const allAppointments = scope === 'all';
+  const selectedDate = params.get('date') ?? (params.has('scope') ? '' : today);
   const patientId = params.get('patientId') ?? '';
-  const rawQuery = { date: selectedDate, ...(patientId ? { patientId } : {}) };
+  const rawQuery = {
+    ...(scope !== null ? { scope } : {}),
+    ...(params.has('date') || !params.has('scope') ? { date: selectedDate } : {}),
+    ...(patientId ? { patientId } : {}),
+  };
   const parsed = AppointmentListQuerySchema.safeParse(rawQuery);
-  const duplicate = params.getAll('date').length > 1 || params.getAll('patientId').length > 1;
+  const duplicate = ['date', 'patientId', 'scope'].some((key) => params.getAll(key).length > 1);
   const valid = parsed.success && !duplicate;
   const reportSearch = valid ? `?${new URLSearchParams(rawQuery)}` : '';
   const patients = useGetPatientsQuery();
+  const patientName = patientId
+    ? patients.currentData?.find((patient) => patient.id === patientId)?.name ?? 'Paciente selecionado (catálogo indisponível)'
+    : 'Todos os pacientes';
   const agenda = useGetAppointmentsQuery(parsed.success ? parsed.data : {}, { skip: !valid });
   const [cancel, cancelState] = useCancelAppointmentMutation();
   const [feedback, setFeedback] = useState('');
@@ -56,8 +65,10 @@ export function AgendaPage() {
   const focusedAppointment = agendaReady ? appointments.find((item) => item.id === focusId) : undefined;
   const createdAppointment = focusedAppointment?.id === createdAppointmentId ? focusedAppointment : undefined;
   useEffect(() => {
-    if (!params.has('date')) setParams(rawQuery, { replace: true });
-  }, [params, selectedDate, patientId, setParams]);
+    if (valid && !params.has('date') && !params.has('scope')) {
+      setParams({ date: today, ...(patientId ? { patientId } : {}) }, { replace: true });
+    }
+  }, [params, valid, today, patientId, setParams]);
   useEffect(() => {
     if (!focusedAppointment || focusedLocation.current === location.key) return;
     const desktop = desktopAppointmentRef.current;
@@ -71,6 +82,18 @@ export function AgendaPage() {
   }, [focusedAppointment, location.key]);
   function filters(date: string, patient = patientId) {
     setParams({ date, ...(patient ? { patientId: patient } : {}) });
+    setFeedback('');
+  }
+  function showAllAppointments() {
+    setParams({ scope: 'all', ...(patientId ? { patientId } : {}) });
+    setFeedback('');
+  }
+  function filterPatient(patient: string) {
+    const next = new URLSearchParams(params);
+    next.delete('focus');
+    if (patient) next.set('patientId', patient);
+    else next.delete('patientId');
+    setParams(next);
     setFeedback('');
   }
   async function reconcileCancellation(item: StaffAppointment, generation = store.getState().auth.generation) {
@@ -125,7 +148,7 @@ export function AgendaPage() {
       <PageHeader
         title="Agenda de exames"
         description="Cada cuidado começa com uma boa organização."
-        actions={<Button asChild><Link to={`/agendamentos/novo?${new URLSearchParams({ date: valid ? selectedDate : today, ...(valid && patientId ? { patientId } : {}) })}`}><Plus className="size-4" aria-hidden />Novo agendamento</Link></Button>}
+        actions={<Button asChild><Link to={`/agendamentos/novo?${new URLSearchParams({ date: valid && !allAppointments ? selectedDate : today, ...(valid && patientId ? { patientId } : {}) })}`}><Plus className="size-4" aria-hidden />Novo agendamento</Link></Button>}
       />
 
       {createdAppointment && (
@@ -136,24 +159,27 @@ export function AgendaPage() {
       )}
 
       <section className="min-w-0 rounded-xl border bg-card" aria-label="Agendamentos">
-        <div className="grid items-end gap-5 p-5 sm:p-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_auto]">
+        <div className="grid items-end gap-5 p-5 sm:p-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-2">
             <Label htmlFor="agenda-date">Data</Label>
             <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-              <Button variant="outline" size="icon" disabled={!valid || selectedDate === '0001-01-01'} aria-label="Dia anterior" onClick={() => filters(shiftDate(selectedDate, -1))}><ChevronLeft className="size-4" /></Button>
+              <Button variant="outline" size="icon" disabled={!valid || allAppointments || selectedDate === '0001-01-01'} aria-label="Dia anterior" onClick={() => filters(shiftDate(selectedDate, -1))}><ChevronLeft className="size-4" /></Button>
               <Input id="agenda-date" className="font-medium tabular-nums" type="date" min="0001-01-01" max="9999-12-31" value={selectedDate} onChange={(event) => filters(event.target.value)} />
-              <Button variant="outline" size="icon" disabled={!valid || selectedDate === '9999-12-31'} aria-label="Próximo dia" onClick={() => filters(shiftDate(selectedDate, 1))}><ChevronRight className="size-4" /></Button>
+              <Button variant="outline" size="icon" disabled={!valid || allAppointments || selectedDate === '9999-12-31'} aria-label="Próximo dia" onClick={() => filters(shiftDate(selectedDate, 1))}><ChevronRight className="size-4" /></Button>
             </div>
           </div>
           <div className="min-w-0 space-y-2">
             <Label htmlFor="agenda-patient">Paciente</Label>
-            <Select id="agenda-patient" value={patientId} onChange={(event) => filters(selectedDate, event.target.value)} disabled={patients.isFetching || patients.isError || !patients.currentData} aria-describedby={patients.isError ? 'agenda-patients-error' : undefined}>
+            <Select id="agenda-patient" value={patientId} onChange={(event) => filterPatient(event.target.value)} disabled={patients.isFetching || patients.isError || !patients.currentData} aria-describedby={patients.isError ? 'agenda-patients-error' : undefined}>
               <option value="">Todos os pacientes</option>
               {patientId && !patients.currentData?.some((patient) => patient.id === patientId) && <option value={patientId}>Paciente selecionado (catálogo indisponível)</option>}
               {patients.currentData?.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
             </Select>
           </div>
-          <Button variant="ghost" className="justify-self-start md:justify-self-end" onClick={() => filters(todayDate())}><CalendarDays className="size-4" aria-hidden />Hoje</Button>
+          <div className="flex min-w-0 flex-wrap gap-2 md:col-span-2">
+            <Button variant={valid && !allAppointments && selectedDate === today ? 'secondary' : 'ghost'} aria-pressed={valid && !allAppointments && selectedDate === today} onClick={() => filters(todayDate())}><CalendarDays className="size-4" aria-hidden />Hoje</Button>
+            <Button variant={valid && allAppointments ? 'secondary' : 'outline'} className="min-w-0 shrink whitespace-normal" aria-pressed={valid && allAppointments} onClick={showAllAppointments}>Ver todos os agendamentos</Button>
+          </div>
         </div>
         {patients.isError && (
           <Alert id="agenda-patients-error" variant="destructive" className="mx-5 mb-5 w-auto sm:mx-6">
@@ -165,11 +191,12 @@ export function AgendaPage() {
         <div className="space-y-4 border-y bg-muted/30 px-5 py-4 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
             <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <h2 className="font-display text-lg font-semibold leading-relaxed tracking-tight sm:text-xl">{valid ? <time dateTime={selectedDate}>{formatLongDate(selectedDate)}</time> : 'Agendamentos'}</h2>
-              {valid && selectedDate === today && <span className="rounded-full bg-highlight-soft px-2.5 py-1 text-xs font-semibold text-highlight-strong">Hoje</span>}
+              <h2 className="font-display text-lg font-semibold leading-relaxed tracking-tight sm:text-xl">{valid ? allAppointments ? 'Todos os agendamentos' : <time dateTime={selectedDate}>{formatLongDate(selectedDate)}</time> : 'Agendamentos'}</h2>
+              {valid && !allAppointments && selectedDate === today && <span className="rounded-full bg-highlight-soft px-2.5 py-1 text-xs font-semibold text-highlight-strong">Hoje</span>}
             </div>
             <TimezoneNote />
           </div>
+          {valid && allAppointments && <p className="break-words text-sm text-muted-foreground">{patientName}</p>}
           <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Resumo da agenda">
             <div className="flex items-baseline gap-2"><dt className="text-muted-foreground">Exames no período</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : appointments.length}</dd></div>
             <div className="flex items-baseline gap-2"><dt className="text-muted-foreground">Agendados</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : scheduled}</dd></div>
@@ -210,7 +237,7 @@ export function AgendaPage() {
               <table className="w-full text-left text-sm">
                 <thead className="text-xs text-muted-foreground">
                   <tr className="border-b">
-                    <th scope="col" className="w-24 px-6 py-4 font-medium">Horário</th>
+                    <th scope="col" className={`${allAppointments ? 'w-36' : 'w-24'} px-6 py-4 font-medium`}>{allAppointments ? 'Data e horário' : 'Horário'}</th>
                     <th scope="col" className="px-4 py-4 font-medium">Paciente / exame</th>
                     <th scope="col" className="px-4 py-4 font-medium">Situação</th>
                     <th scope="col" className="px-4 py-4 font-medium">Laudo</th>
@@ -220,7 +247,12 @@ export function AgendaPage() {
                 <tbody className="divide-y">
                   {appointments.map((item) => (
                     <tr key={item.id} ref={item.id === focusId ? desktopAppointmentRef : undefined} data-appointment-id={item.id} tabIndex={-1} className={`scroll-mt-6 transition-colors hover:bg-muted/25 focus:outline-2 focus:outline-offset-[-2px] focus:outline-ring${createdAppointment?.id === item.id ? ' bg-highlight-soft/50' : ''}`}>
-                      <td className="px-6 py-5 align-top"><time dateTime={item.startsAt} className="text-lg font-semibold tabular-nums tracking-tight">{formatTime(item.startsAt)}</time></td>
+                      <td className="px-6 py-5 align-top">
+                        <time dateTime={item.startsAt} className="font-semibold tabular-nums tracking-tight">
+                          {allAppointments && <span className="mb-1 block whitespace-nowrap text-sm">{formatDate(item.startsAt)}</span>}
+                          <span className="text-lg">{formatTime(item.startsAt)}</span>
+                        </time>
+                      </td>
                       <td className="px-4 py-5 align-top">
                         <strong className="block font-semibold leading-6">{item.patient.name}</strong>
                         <span className="mt-0.5 block leading-6 text-muted-foreground">{item.examType.name}</span>
@@ -243,10 +275,13 @@ export function AgendaPage() {
             <div className="divide-y xl:hidden">
               {appointments.map((item) => (
                 <article key={item.id} ref={item.id === focusId ? mobileAppointmentRef : undefined} data-appointment-id={item.id} tabIndex={-1} className={`scroll-mt-6 p-5 focus:outline-2 focus:outline-offset-[-2px] focus:outline-ring sm:p-6${createdAppointment?.id === item.id ? ' bg-highlight-soft/50' : ''}`}>
-                  <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-4 sm:grid-cols-[5.5rem_minmax(0,1fr)]">
+                  <div className={`grid gap-4 ${allAppointments ? 'grid-cols-[6.5rem_minmax(0,1fr)]' : 'grid-cols-[4.5rem_minmax(0,1fr)] sm:grid-cols-[5.5rem_minmax(0,1fr)]'}`}>
                     <div>
-                      <time dateTime={item.startsAt} className="text-xl font-semibold tabular-nums tracking-tight sm:text-2xl">{formatTime(item.startsAt)}</time>
-                      <span className="sr-only">{formatDateTime(item.startsAt)}</span>
+                      <time dateTime={item.startsAt} className="font-semibold tabular-nums tracking-tight">
+                        {allAppointments && <span className="mb-1 block text-sm">{formatDate(item.startsAt)}</span>}
+                        <span className="text-xl sm:text-2xl">{formatTime(item.startsAt)}</span>
+                      </time>
+                      {!allAppointments && <span className="sr-only">{formatDateTime(item.startsAt)}</span>}
                     </div>
                     <div className="min-w-0">
                       <h3 className="break-words font-semibold leading-6">{item.patient.name}</h3>
