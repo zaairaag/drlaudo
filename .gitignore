@@ -7,6 +7,9 @@ build/
 .eslintcache
 *.tsbuildinfo
 
+# Cliente Prisma é gerado no build; nunca versionado.
+apps/api/src/generated/
+
 # Segredos e configuração local. Exemplos sanitizados devem ser versionados.
 .env
 .env.*

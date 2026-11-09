@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:aa6cb33cf4c19c765cefcf48d96176258800870a9a1e930ad126200f9d825139
+        env:
+          POSTGRES_USER: drlaudo
+          POSTGRES_PASSWORD: drlaudo
+          POSTGRES_DB: drlaudo_test
+        ports: ['5432/tcp']
+        options: >-
+          --tmpfs /var/lib/postgresql/data
+          --health-cmd "pg_isready -U drlaudo -d drlaudo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://drlaudo:drlaudo@127.0.0.1:${{ job.services.postgres.ports[5432] }}/drlaudo_test?schema=public
+      DATABASE_URL_TEST: postgresql://drlaudo:drlaudo@127.0.0.1:${{ job.services.postgres.ports[5432] }}/drlaudo_test?schema=public
+      JWT_SECRET: ci-secret-with-at-least-32-characters!!
+      TRUST_PROXY_HOPS: "0"
+      VITE_API_MOCKING: "false"
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22.22.2"
+          cache: npm
+      - name: Clean locked install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Strict typecheck (all workspaces)
+        run: npm run typecheck
+      - name: Application boundaries and cycles
+        run: npm run check:arch
+      - name: Contract, real PostgreSQL API, and UI tests
+        run: npm test
+        env:
+          NODE_ENV: test
+      - name: Production build and emitted-module guard
+        run: npm run build
+        env:
+          NODE_ENV: production
+      - name: Install locked Chromium
+        run: npm exec -w apps/e2e -- playwright install --with-deps chromium
+      - name: Real API browser and accessibility tests
+        run: npm run test:e2e
+      - name: Start isolated HTTP QA stack
+        id: http_qa
+        run: >-
+          docker compose
+          -p "drlaudo-ci-http-qa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          -f docker-compose.qa.yml --profile http
+          up -d --build --wait --wait-timeout 180 web
+      - name: Verify Nginx headers, routing, and proxy IP quota
+        run: npm run check:delivery -- --base-url http://127.0.0.1:18080 --check-proxy --login-limit 10
+      - name: Stop only this run's disposable HTTP QA
+        if: always() && (steps.http_qa.outcome == 'success' || steps.http_qa.outcome == 'failure')
+        run: >-
+          docker compose
+          -p "drlaudo-ci-http-qa-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          -f docker-compose.qa.yml --profile http down
+      - name: Browser failure evidence (fictitious QA only)
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: browser-qa-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/e2e/playwright-report/
+            apps/e2e/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

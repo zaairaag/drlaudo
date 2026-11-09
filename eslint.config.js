@@ -32,6 +32,8 @@ export default defineConfig([
       '**/coverage/**',
       '**/.vite/**',
       '**/.cache/**',
+      // Prisma 7 emits plain TypeScript; it is generated output, not our code.
+      'apps/api/src/generated/**',
       '**/playwright-report/**',
       '**/test-results/**',
       '**/blob-report/**',
@@ -56,13 +58,15 @@ export default defineConfig([
     extends: [tseslint.configs.recommended],
   },
   {
-    files: ['*.{js,mjs,cjs}', '**/*.config.{js,mjs,cjs,ts,mts,cts}'],
+    files: ['*.{js,mjs,cjs}', '**/*.config.{js,mjs,cjs,ts,mts,cts}', 'scripts/**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: {
         process: 'readonly',
         console: 'readonly',
         Buffer: 'readonly',
         URL: 'readonly',
+        fetch: 'readonly',
+        AbortSignal: 'readonly',
         module: 'readonly',
         exports: 'readonly',
         require: 'readonly',

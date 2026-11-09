@@ -2,6 +2,7 @@
 **/node_modules/
 **/dist/
 **/build/
+apps/api/src/generated/
 **/.vite/
 **/.cache/
 **/coverage/
