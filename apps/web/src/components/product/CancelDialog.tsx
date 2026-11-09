@@ -11,7 +11,7 @@ export function CancelDialog({ appointment, pending, onConfirm }: {
 }) {
   const [open, setOpen] = useState(false);
   return <AlertDialog.Root open={open} onOpenChange={(next) => { if (!pending) setOpen(next); }}>
-    <AlertDialog.Trigger asChild><Button variant="ghost" className="text-destructive" aria-label={`Cancelar agendamento de ${appointment.patient.name}`}>Cancelar</Button></AlertDialog.Trigger>
+    <AlertDialog.Trigger asChild><Button variant="ghost" className="text-destructive" disabled={pending} aria-label={`Cancelar agendamento de ${appointment.patient.name}`}>Cancelar</Button></AlertDialog.Trigger>
     <AlertDialog.Portal>
       <AlertDialog.Overlay className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm" />
       <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-xl" onEscapeKeyDown={(event) => { if (pending) event.preventDefault(); }}>

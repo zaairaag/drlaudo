@@ -49,8 +49,8 @@ export function SlotGrid({ slots, value = '', onChange, disabled = false, classN
                     aria-label={`${time}, disponível`}
                     onClick={() => onChange(slot.startsAt)}
                     className={cn(
-                      'tabular-nums min-h-11 font-medium transition-all',
-                      isSelected && 'shadow-sm ring-2 ring-primary ring-offset-2',
+                      'tabular-nums min-h-12 font-medium transition-colors',
+                      isSelected && 'ring-2 ring-primary ring-offset-2',
                     )}
                   >
                     {time}
@@ -73,7 +73,7 @@ export function SlotGrid({ slots, value = '', onChange, disabled = false, classN
                         aria-pressed="false"
                         aria-label={`${time}, ${reasonLabel}`}
                         aria-describedby={descriptionId}
-                        className="tabular-nums min-h-11 w-full bg-muted/40 text-muted-foreground/60 border-dashed"
+                        className="tabular-nums min-h-12 w-full bg-muted text-muted-foreground border-transparent line-through decoration-muted-foreground/50 disabled:opacity-70"
                       >
                         {time}
                       </Button>

@@ -5,7 +5,6 @@ import userEvent from '@testing-library/user-event';
 import { Provider } from 'react-redux';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../../app/api';
 import { resetSession, setSession } from '../../app/authSlice';
 import { createAppStore, type AppStore } from '../../app/store';
 import { makeSession } from '../../app/testFixtures';
@@ -106,8 +105,139 @@ afterEach(() => {
   for (const item of activeResources.splice(0)) {
     item.router.dispose();
     item.store.dispatch(resetSession());
+    item.store.dispose();
   }
   localStorage.clear();
+});
+
+describe('Retorno contextual à agenda', () => {
+  it.each(['DRAFT', 'PUBLISHED', 'CANCELED'] as const)('preserva data/paciente ao voltar de %s', async (state) => {
+    const report = state === 'PUBLISHED' ? basePublishedReport : baseDraftReport;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report')
+        ? jsonResponse(report)
+        : jsonResponse({
+          ...baseAppointment,
+          status: state === 'CANCELED' ? 'CANCELED' : 'SCHEDULED',
+          report: { id: report.id, status: report.status },
+        }),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-11-10&patientId=${baseAppointment.patient.id}`],
+    });
+    const back = await screen.findByRole('link', { name: 'Voltar para agenda' });
+    await user.click(back);
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(`?date=2026-11-10&patientId=${baseAppointment.patient.id}`);
+  });
+
+  it('abertura direta volta ao dia do exame sem inventar filtro de paciente', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? jsonResponse(basePublishedReport)
+        : jsonResponse({ ...baseAppointment, report: { id: basePublishedReport.id, status: 'PUBLISHED' } }),
+    );
+    const { router, user } = setupReportHarness();
+    await user.click(await screen.findByRole('link', { name: 'Voltar para agenda' }));
+    expect(router.state.location.search).toBe('?date=2026-11-10');
+  });
+
+  it('mantém o contexto da URL após abertura direta sem encaminhá-lo às consultas da API', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? jsonResponse(basePublishedReport)
+        : jsonResponse({ ...baseAppointment, report: { id: basePublishedReport.id, status: 'PUBLISHED' } }),
+    );
+    const patientId = '10000000-0000-4000-8000-000000000099';
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-10-01&patientId=${patientId}&returnTo=https%3A%2F%2Fexample.test`],
+    });
+
+    await user.click(await screen.findByRole('link', { name: 'Voltar para agenda' }));
+
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(`?date=2026-10-01&patientId=${patientId}`);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    for (const [url] of fetch.mock.calls) {
+      expect(new URL(String(url), 'http://localhost').search).toBe('');
+    }
+  });
+
+  it('abertura direta usa a data do exame em Brasília, não o dia UTC', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? jsonResponse(basePublishedReport)
+        : jsonResponse({
+          ...baseAppointment,
+          startsAt: '2026-11-10T01:30:00.000Z',
+          report: { id: basePublishedReport.id, status: 'PUBLISHED' },
+        }),
+    );
+    const { router, user } = setupReportHarness();
+    await user.click(await screen.findByRole('link', { name: 'Voltar para agenda' }));
+    expect(router.state.location.search).toBe('?date=2026-11-09');
+  });
+
+  it.each([
+    [`date=2026-02-30&patientId=${baseAppointment.patient.id}`, `?date=2026-11-10&patientId=${baseAppointment.patient.id}`],
+    ['date=2026-10-01&patientId=invalido', '?date=2026-10-01'],
+    [`date=2026-10-01&date=2026-10-01&patientId=${baseAppointment.patient.id}`, `?date=2026-11-10&patientId=${baseAppointment.patient.id}`],
+    [`date=2026-10-01&patientId=${baseAppointment.patient.id}&patientId=${baseAppointment.patient.id}`, '?date=2026-10-01'],
+    ['date=&patientId=', '?date=2026-11-10'],
+    ['returnTo=%2F%2Fexample.test', '?date=2026-11-10'],
+  ])('descarta somente valores inválidos ou duplicados de %s', async (query, expectedSearch) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? errorResponse('NOT_FOUND', 'Não encontramos este registro', 404)
+        : jsonResponse(baseAppointment),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?${query}`],
+    });
+    await screen.findByLabelText('Título');
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(expectedSearch);
+  });
+
+  it.each([
+    [404, '', ''],
+    [500, '', ''],
+    [404, `date=2026-10-01&patientId=${baseAppointment.patient.id}`, `?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    [500, `date=2026-10-01&patientId=${baseAppointment.patient.id}`, `?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    [404, `date=2026-02-30&patientId=${baseAppointment.patient.id}&patientId=${baseAppointment.patient.id}`, ''],
+    [500, `date=2026-10-01&date=2026-10-01&patientId=invalido&returnTo=https%3A%2F%2Fexample.test`, ''],
+  ] as const)('erro %s sem detalhe confirmado preserva apenas contexto válido de %s', async (status, query, expectedSearch) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      errorResponse(
+        status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR',
+        status === 404 ? 'Não encontramos este registro' : 'Não foi possível concluir a solicitação.',
+        status,
+      ),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo${query ? `?${query}` : ''}`],
+    });
+    await screen.findByText(status === 404 ? 'Não encontramos este registro' : 'Algo deu errado. Tente novamente em instantes.');
+    await user.click(screen.getByRole('link', { name: /voltar para (a )?agenda/i }));
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(expectedSearch);
+  });
+
+  it.each([
+    [null, 500, 'Não foi possível carregar os dados do laudo. Tente novamente.'],
+    [{ id: baseDraftReport.id, status: 'DRAFT' }, 404, 'Inconsistência na recuperação do laudo. Não foi possível carregar os dados.'],
+    [{ id: baseDraftReport.id, status: 'DRAFT' }, 500, 'Inconsistência na recuperação do laudo. Não foi possível carregar os dados.'],
+  ] as const)('falha de leitura do laudo mantém retorno contextual com resumo %s e erro %s', async (summary, status, message) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report')
+        ? errorResponse(status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', status)
+        : jsonResponse({ ...baseAppointment, report: summary }),
+    );
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    });
+    await screen.findByText(message);
+    await user.click(screen.getByRole('link', { name: /voltar para (a )?agenda/i }));
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(`?date=2026-10-01&patientId=${baseAppointment.patient.id}`);
+  });
 });
 
 describe('S4 / T18 / T19 · ReportPage: Recuperação, reconciliação e contexto', () => {
@@ -272,6 +402,9 @@ describe('S4 / RN-16 · Validação e regras de negócio de entrada', () => {
     await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
 
     expect(await screen.findByText(/maior que o limite permitido|máximo 120/i)).toBeVisible();
+    expect(titleInput).toHaveValue('a'.repeat(121));
+    expect(titleInput).toHaveAccessibleDescription(/121\s*\/\s*120/);
+    expect(titleInput).toHaveAccessibleDescription(/maior que o limite permitido|máximo 120/i);
   });
 
   it('exibe erro quando texto tem menos de 10 caracteres após trim', async () => {
@@ -310,6 +443,29 @@ describe('S4 / RN-16 · Validação e regras de negócio de entrada', () => {
     expect(profInput).toHaveFocus();
   });
 
+  it.each([
+    { label: 'Texto do laudo', value: 'a'.repeat(10_001), count: /10001\s*\/\s*10[.]?000/ },
+    { label: 'Profissional responsável', value: 'a'.repeat(121), count: /121\s*\/\s*120/ },
+  ])('mantém $label acima do limite, com contador e erro associados', async ({ label, value, count }) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).endsWith(`/appointments/${baseAppointment.id}`)) {
+        return jsonResponse({ ...baseAppointment, report: { id: baseDraftReport.id, status: 'DRAFT' } });
+      }
+      return jsonResponse(baseDraftReport);
+    });
+    const { user } = setupReportHarness();
+    const input = await screen.findByLabelText(label);
+    await user.clear(input);
+    await user.paste(value);
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+
+    expect(await screen.findByText(/maior que o limite permitido|máximo/i)).toBeVisible();
+    expect(input).toHaveValue(value);
+    expect(input).toHaveAccessibleDescription(count);
+    expect(input).toHaveAccessibleDescription(/maior que o limite permitido|máximo/i);
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+  });
+
   it('preserva quebras de linha e espaços internos no corpo do laudo', async () => {
     let capturedBody = '';
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
@@ -331,6 +487,50 @@ describe('S4 / RN-16 · Validação e regras de negócio de entrada', () => {
     await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
 
     await waitFor(() => expect(capturedBody).toBe(complexBody));
+  });
+});
+
+describe('Feedback do editor', () => {
+  it('conta caracteres após trim, mantém alterações não salvas e não salva ao digitar', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).endsWith(`/appointments/${baseAppointment.id}`)) {
+        return jsonResponse({ ...baseAppointment, report: { id: baseDraftReport.id, status: 'DRAFT' } });
+      }
+      return jsonResponse(baseDraftReport);
+    });
+    const { user } = setupReportHarness();
+    const title = await screen.findByLabelText('Título');
+    await user.clear(title);
+    await user.paste('  a😀  ');
+    const body = screen.getByLabelText('Texto do laudo');
+    await user.clear(body);
+    await user.paste('  linha😀  meio\nfinal  ');
+    const professionalName = screen.getByLabelText('Profissional responsável');
+    await user.clear(professionalName);
+    await user.paste('  Dr😀  ');
+
+    expect(title).toHaveValue('  a😀  ');
+    expect(body).toHaveValue('  linha😀  meio\nfinal  ');
+    expect(professionalName).toHaveValue('  Dr😀  ');
+    expect(title).toHaveAccessibleDescription(/3\s*\/\s*120/);
+    expect(body).toHaveAccessibleDescription(/19\s*\/\s*10[.]?000/);
+    expect(professionalName).toHaveAccessibleDescription(/4\s*\/\s*120/);
+    expect(screen.getByText('Alterações não salvas')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+    expect(fetchSpy.mock.calls.some(([, init]) => init?.method === 'POST' || init?.method === 'PATCH')).toBe(false);
+  });
+
+  it('laudo publicado tem um único título principal e título do documento subordinado', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).endsWith(`/appointments/${baseAppointment.id}`)) {
+        return jsonResponse({ ...baseAppointment, report: { id: basePublishedReport.id, status: 'PUBLISHED' } });
+      }
+      return jsonResponse(basePublishedReport);
+    });
+    setupReportHarness();
+    await screen.findByText(basePublishedReport.body);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 2, name: basePublishedReport.title })).toBeVisible();
   });
 });
 
@@ -402,6 +602,96 @@ describe('S4 / T18 · Salvar rascunho, baseline e proteção contra sobrescrita'
     });
 
     expect(await screen.findByText('Rascunho salvo.')).toBeVisible();
+    await user.type(screen.getByLabelText('Título'), ' sem salvar');
+    expect(screen.queryByText('Rascunho salvo.')).not.toBeInTheDocument();
+    expect(screen.getByText('Alterações não salvas')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+  });
+
+  it('falha ao criar não limpa o texto nem o estado de alterações não salvas após reconciliar', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (String(url).endsWith(`/appointments/${baseAppointment.id}`)) return jsonResponse(baseAppointment);
+      if (String(url).endsWith('/report') && init?.method === 'POST') {
+        return errorResponse('INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', 500);
+      }
+      return errorResponse('NOT_FOUND', 'Não encontramos este registro', 404);
+    });
+
+    const { user } = setupReportHarness();
+    const title = await screen.findByLabelText('Título');
+    await user.click(title);
+    await user.paste('  Laudo ainda não salvo  ');
+    await user.click(screen.getByLabelText('Texto do laudo'));
+    await user.paste('  Primeira linha.\n\nSegunda com   espaços.  ');
+    await user.click(screen.getByLabelText('Profissional responsável'));
+    await user.paste('  Dra. Marina Costa  ');
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+
+    expect(await screen.findByRole('alert')).toBeVisible();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar rascunho' })).toBeEnabled());
+    expect(screen.getByLabelText('Título')).toHaveValue('  Laudo ainda não salvo  ');
+    expect(screen.getByLabelText('Texto do laudo')).toHaveValue('  Primeira linha.\n\nSegunda com   espaços.  ');
+    expect(screen.getByLabelText('Profissional responsável')).toHaveValue('  Dra. Marina Costa  ');
+    expect(screen.getByText('Alterações não salvas')).toBeVisible();
+    expect(screen.queryByText('Rascunho salvo.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+
+    await user.click(screen.getByRole('link', { name: /voltar para agenda/i }));
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Descartar alterações?');
+  });
+
+  it('após falha na edição, recarrega a versão reconciliada em vez do último save local', async () => {
+    const savedReport: StaffReport = {
+      ...baseDraftReport,
+      title: 'Primeira revisão salva',
+      updatedAt: '2026-11-10T12:05:00.000Z',
+    };
+    const reconciledReport: StaffReport = {
+      ...savedReport,
+      title: 'Revisão mais recente da equipe',
+      body: 'Conteúdo canônico recuperado após a falha de gravação.',
+      updatedAt: '2026-11-10T12:06:00.000Z',
+    };
+    let currentReport = baseDraftReport;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (String(url).endsWith(`/appointments/${baseAppointment.id}`)) {
+        return jsonResponse({ ...baseAppointment, report: { id: baseDraftReport.id, status: 'DRAFT' } });
+      }
+      if (String(url).endsWith('/report')) return jsonResponse(currentReport);
+      if (String(url).endsWith(`/reports/${baseDraftReport.id}`) && init?.method === 'PATCH') {
+        if (currentReport === baseDraftReport) {
+          currentReport = savedReport;
+          return jsonResponse(savedReport);
+        }
+        currentReport = reconciledReport;
+        return errorResponse('INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', 500);
+      }
+      return jsonResponse({});
+    });
+
+    const { user } = setupReportHarness();
+    await user.clear(await screen.findByLabelText('Título'));
+    await user.paste(savedReport.title);
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    expect(await screen.findByText('Rascunho salvo.')).toBeVisible();
+    await user.clear(screen.getByLabelText('Título'));
+    await user.paste('Minha alteração ainda não salva');
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+
+    expect(await screen.findByRole('alert')).toBeVisible();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Recarregar rascunho' })).toBeEnabled());
+    expect(screen.getByLabelText('Título')).toHaveValue('Minha alteração ainda não salva');
+    expect(screen.getByText('Alterações não salvas')).toBeVisible();
+    expect(screen.queryByText('Rascunho salvo.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Recarregar rascunho' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Descartar e recarregar' }));
+    expect(screen.getByLabelText('Título')).toHaveValue(reconciledReport.title);
+    await user.click(screen.getByRole('button', { name: 'Publicar' }));
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByRole('heading', { name: reconciledReport.title })).toBeVisible();
+    expect(dialog).toHaveTextContent(reconciledReport.body);
+    expect(dialog).not.toHaveTextContent(savedReport.title);
+    expect(dialog).not.toHaveTextContent('Minha alteração ainda não salva');
   });
 
   it('refetch do servidor NUNCA sobrescreve edições locais dirty do usuário', async () => {
@@ -416,14 +706,14 @@ describe('S4 / T18 · Salvar rascunho, baseline e proteção contra sobrescrita'
       return jsonResponse({});
     });
 
-    const { user, store } = setupReportHarness();
+    const { user } = setupReportHarness();
 
     const titleInput = await screen.findByLabelText('Título');
     await user.type(titleInput, ' - alteração não salva');
     expect(titleInput).toHaveValue(`${baseDraftReport.title} - alteração não salva`);
 
     // Dispara refetch em background (ex: foco na janela)
-    store.dispatch(api.internalActions.onFocus());
+    window.dispatchEvent(new Event('focus'));
 
     await waitFor(() => {
       expect(titleInput).toHaveValue(`${baseDraftReport.title} - alteração não salva`);
@@ -523,9 +813,68 @@ describe('S4 / T19 · Elegibilidade e publicação de laudo', () => {
     expect(dialog).toHaveTextContent('O paciente poderá consultar este laudo.');
     expect(dialog).toHaveTextContent('Ana Souza');
     expect(dialog).toHaveTextContent('Raio-X de tórax');
+    expect(dialog).toHaveTextContent(baseDraftReport.title);
+    expect(dialog).toHaveTextContent(baseDraftReport.body);
+    expect(dialog).toHaveTextContent(baseDraftReport.professionalName);
 
     const cancelBtn = within(dialog).getByRole('button', { name: 'Voltar' });
     expect(cancelBtn).toHaveFocus();
+    expect(within(dialog).getByText('10/11/2026 às 10:00')).toBeVisible();
+    await user.tab();
+    expect(within(dialog).getByRole('button', { name: 'Publicar laudo' })).toHaveFocus();
+    await user.tab();
+    expect(dialog.contains(document.activeElement)).toBe(true);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('revisa a última versão salva e não inclui alterações locais descartadas nem interpreta HTML', async () => {
+    const savedReport: StaffReport = {
+      ...baseDraftReport,
+      title: 'Laudo de tórax revisado',
+      body: 'Primeira linha.\n\n<strong>Conteúdo literal</strong> com   espaços.\n'.padEnd(10_000, 'x'),
+      professionalName: 'Dra. Helena Almeida',
+      updatedAt: '2026-11-10T12:05:00.000Z',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (String(url).endsWith(`/appointments/${baseAppointment.id}`)) {
+        return jsonResponse({ ...baseAppointment, report: { id: baseDraftReport.id, status: 'DRAFT' } });
+      }
+      if (String(url).endsWith('/report')) return jsonResponse(baseDraftReport);
+      if (String(url).endsWith(`/reports/${baseDraftReport.id}`) && init?.method === 'PATCH') {
+        return jsonResponse(savedReport);
+      }
+      return jsonResponse({});
+    });
+
+    const { user } = setupReportHarness();
+    await user.clear(await screen.findByLabelText('Título'));
+    await user.paste(savedReport.title);
+    await user.clear(screen.getByLabelText('Texto do laudo'));
+    await user.paste(savedReport.body);
+    await user.clear(screen.getByLabelText('Profissional responsável'));
+    await user.paste(savedReport.professionalName);
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    expect(await screen.findByText('Rascunho salvo.')).toBeVisible();
+
+    await user.clear(screen.getByLabelText('Texto do laudo'));
+    await user.paste('Trecho local que não foi salvo.');
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+    expect(screen.queryByText('Rascunho salvo.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Recarregar rascunho' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Descartar e recarregar' }));
+    await waitFor(() => expect(screen.getByLabelText('Texto do laudo')).toHaveValue(savedReport.body));
+    await user.click(screen.getByRole('button', { name: 'Publicar' }));
+
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByRole('heading', { name: savedReport.title })).toBeVisible();
+    expect(within(dialog).getByText(savedReport.professionalName)).toBeVisible();
+    const preview = within(dialog).getByText(/<strong>Conteúdo literal<\/strong>/);
+    expect(preview.textContent).toBe(savedReport.body);
+    expect(preview.querySelector('strong')).toBeNull();
+    expect(dialog).not.toHaveTextContent(baseDraftReport.body);
+    expect(dialog).not.toHaveTextContent('Trecho local que não foi salvo.');
+    expect(within(dialog).getByRole('button', { name: 'Publicar laudo' })).toBeEnabled();
   });
 
   it('desistir no PublishDialog por "Voltar" ou Escape não executa chamada HTTP', async () => {
@@ -630,6 +979,8 @@ describe('S4 / RN-12 / RN-18 / RN-20 · Estados bloqueados e imutáveis', () => 
 
     expect(await screen.findByText('O agendamento foi cancelado; o laudo está bloqueado.')).toBeVisible();
     expect(screen.getByText(baseDraftReport.title)).toBeVisible();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 2, name: baseDraftReport.title })).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Salvar rascunho' })).not.toBeInTheDocument();
   });
 
@@ -665,7 +1016,9 @@ describe('S4 / S6 · Proteção contra perda de dados (useBlocker e beforeunload
       return jsonResponse({});
     });
 
-    const { user, router } = setupReportHarness();
+    const { user, router } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    });
 
     const titleInput = await screen.findByLabelText('Título');
     await user.type(titleInput, ' alterado');
@@ -685,6 +1038,7 @@ describe('S4 / S6 · Proteção contra perda de dados (useBlocker e beforeunload
 
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     expect(router.state.location.pathname).toBe(`/agendamentos/${baseAppointment.id}/laudo`);
+    expect(router.state.location.search).toBe(`?date=2026-10-01&patientId=${baseAppointment.patient.id}`);
     expect(screen.getByLabelText('Título')).toHaveValue(`${baseDraftReport.title} alterado`);
   });
 
@@ -700,7 +1054,9 @@ describe('S4 / S6 · Proteção contra perda de dados (useBlocker e beforeunload
       return jsonResponse({});
     });
 
-    const { user, router } = setupReportHarness();
+    const { user, router } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    });
 
     const titleInput = await screen.findByLabelText('Título');
     await user.type(titleInput, ' alterado');
@@ -713,6 +1069,7 @@ describe('S4 / S6 · Proteção contra perda de dados (useBlocker e beforeunload
     await user.click(discardBtn);
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/agenda'));
+    expect(router.state.location.search).toBe(`?date=2026-10-01&patientId=${baseAppointment.patient.id}`);
   });
 
   it('beforeunload adiciona listener quando dirty e aciona preventDefault', async () => {
@@ -765,6 +1122,43 @@ describe('S4 / E3 / E4 · Conflitos concorrentes, reconciliação e recarregar',
     expect(screen.getByLabelText('Título')).toHaveValue('Texto Conflitante');
     // Consultas foram refeitas para reconciliação
     expect(refetchCount).toBeGreaterThanOrEqual(2);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Salvar rascunho' })).toBeEnabled());
+    expect(screen.getByText('Alterações não salvas')).toBeVisible();
+    expect(screen.queryByText('Rascunho salvo.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publicar' })).toBeDisabled();
+  });
+
+  it('REPORT_LOCKED seguido de PUBLISHED apresenta texto local e exige descarte sem permitir nova escrita', async () => {
+    let locked = false;
+    let writes = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'PATCH') {
+        writes += 1;
+        locked = true;
+        return errorResponse('REPORT_LOCKED', 'Este laudo foi publicado e não pode ser alterado.', 409);
+      }
+      const report = locked ? basePublishedReport : baseDraftReport;
+      return String(url).endsWith('/report') ? jsonResponse(report)
+        : jsonResponse({ ...baseAppointment, report: { id: report.id, status: report.status } });
+    });
+    const { user, router } = setupReportHarness();
+    await user.clear(await screen.findByLabelText('Título'));
+    await user.type(screen.getByLabelText('Título'), 'Título local preservado');
+    await user.type(screen.getByLabelText('Texto do laudo'), ' Conteúdo local preservado.');
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    await screen.findByRole('heading', { name: 'Laudo do exame' });
+    expect(screen.getByText('Título local preservado', { exact: false })).toBeVisible();
+    expect(screen.getByText(/Conteúdo local preservado/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Salvar rascunho' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Publicar' })).not.toBeInTheDocument();
+    const unload = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    expect(unload.defaultPrevented).toBe(true);
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Continuar editando' }));
+    expect(router.state.location.pathname).toBe(`/agendamentos/${baseAppointment.id}/laudo`);
+    expect(screen.getByText('Título local preservado', { exact: false })).toBeVisible();
+    expect(writes).toBe(1);
   });
 
   it('se após reconciliação o agendamento foi cancelado, exibe aviso e dados canônicos sem forçar escrita', async () => {
@@ -789,7 +1183,9 @@ describe('S4 / E3 / E4 · Conflitos concorrentes, reconciliação e recarregar',
       return jsonResponse({});
     });
 
-    const { user } = setupReportHarness();
+    const { user, router } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    });
 
     const titleInput = await screen.findByLabelText('Título');
     await user.type(titleInput, ' mais texto');
@@ -799,6 +1195,43 @@ describe('S4 / E3 / E4 · Conflitos concorrentes, reconciliação e recarregar',
     expect(await screen.findByText('O agendamento foi cancelado; o laudo está bloqueado.')).toBeVisible();
     expect(screen.getByText(/alterações não salvas/i)).toBeVisible();
     expect(screen.queryByRole('button', { name: 'Salvar rascunho' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    const discardDialog = await screen.findByRole('alertdialog');
+    expect(within(discardDialog).getByRole('button', { name: 'Continuar editando' })).toHaveFocus();
+    await user.click(within(discardDialog).getByRole('button', { name: 'Continuar editando' }));
+    expect(screen.getByText(/alterações não salvas/i)).toBeVisible();
+    expect(router.state.location.pathname).toBe(`/agendamentos/${baseAppointment.id}/laudo`);
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Descartar alterações' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/agenda'));
+    expect(router.state.location.search).toBe(`?date=2026-10-01&patientId=${baseAppointment.patient.id}`);
+  });
+
+  it('erro após falha ao salvar mantém confirmação de descarte e retorno contextual', async () => {
+    let saveFailed = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method === 'PATCH') {
+        saveFailed = true;
+        return errorResponse('INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', 500);
+      }
+      if (String(url).endsWith('/report')) return jsonResponse(baseDraftReport);
+      return saveFailed
+        ? errorResponse('INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', 500)
+        : jsonResponse({ ...baseAppointment, report: { id: baseDraftReport.id, status: 'DRAFT' } });
+    });
+    const { router, user } = setupReportHarness({
+      initialEntries: [`/agendamentos/${baseAppointment.id}/laudo?date=2026-10-01&patientId=${baseAppointment.patient.id}`],
+    });
+    await user.type(await screen.findByLabelText('Título'), ' alterado');
+    await user.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    await screen.findByText('Algo deu errado. Tente novamente em instantes.');
+    await user.click(screen.getByRole('link', { name: /voltar para (a )?agenda/i }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Continuar editando' }));
+    expect(router.state.location.pathname).toBe(`/agendamentos/${baseAppointment.id}/laudo`);
+    await user.click(screen.getByRole('link', { name: /voltar para (a )?agenda/i }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Descartar alterações' }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/agenda'));
+    expect(router.state.location.search).toBe(`?date=2026-10-01&patientId=${baseAppointment.patient.id}`);
   });
 
   it('botão "Recarregar rascunho" exige confirmação explícita antes de descartar alterações locais', async () => {

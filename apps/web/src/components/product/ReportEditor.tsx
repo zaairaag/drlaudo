@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertDialog } from 'radix-ui';
@@ -19,7 +19,7 @@ export interface ReportEditorProps {
   isSaving: boolean;
   isPublishing: boolean;
   reconciling: boolean;
-  onSave: (values: CreateReportRequest) => Promise<void>;
+  onSave: (values: CreateReportRequest, unsavedValues: CreateReportRequest) => Promise<boolean>;
   onPublishClick: () => void;
   onDirtyChange?: (isDirty: boolean) => void;
   initialValues?: CreateReportRequest | null;
@@ -36,6 +36,9 @@ export function ReportEditor({
   initialValues,
 }: ReportEditorProps) {
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  const [actionLayout, setActionLayout] = useState({ docked: false, height: 0 });
+  const [hasRestoredEdits, setHasRestoredEdits] = useState(Boolean(initialValues));
   const [baseline, setBaseline] = useState<CreateReportRequest>({
     title: report?.title ?? '',
     body: report?.body ?? '',
@@ -51,9 +54,48 @@ export function ReportEditor({
     },
     shouldFocusError: true,
   });
-  const isDirty = form.formState.isDirty;
+  const isDirty = form.formState.isDirty || hasRestoredEdits;
+  const titleLength = form.watch('title').trim().length;
+  const bodyLength = form.watch('body').trim().length;
+  const professionalNameLength = form.watch('professionalName').trim().length;
   const errors = form.formState.errors;
   const disabled = isSaving || isPublishing || reconciling;
+  const fieldScrollStyle = {
+    scrollMarginBottom: actionLayout.docked ? actionLayout.height + 24 : 24,
+  };
+
+  useLayoutEffect(() => {
+    const actionBar = actionBarRef.current;
+    if (!actionBar) return;
+    const viewport = window.visualViewport;
+
+    function measureActions() {
+      if (!actionBar) return;
+      const height = actionBar.getBoundingClientRect().height;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      // Em zoom, teclado virtual ou pouca altura, as ações voltam ao fluxo sem sobreposição.
+      const docked = viewportHeight >= 640 && height <= viewportHeight / 3;
+      setActionLayout((current) => (
+        current.docked === docked && current.height === height ? current : { docked, height }
+      ));
+    }
+
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measureActions);
+    observer?.observe(actionBar);
+    window.addEventListener('resize', measureActions);
+    viewport?.addEventListener('resize', measureActions);
+    measureActions();
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measureActions);
+      viewport?.removeEventListener('resize', measureActions);
+    };
+  }, []);
+
+  function revealField(event: FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    event.currentTarget.scrollIntoView?.({ block: 'nearest' });
+  }
 
   // Atualiza dirty no componente pai para proteção de rotas
   useEffect(() => {
@@ -72,14 +114,16 @@ export function ReportEditor({
       setBaseline(nextBaseline);
       form.reset(nextBaseline);
     }
-  }, [report, isDirty, form]);
+  }, [report, isDirty, initialValues, form]);
 
   async function handleSubmit(values: CreateReportRequest) {
     if (disabled) return;
-    await onSave(values);
+    const saved = await onSave(values, form.getValues());
+    if (!saved) return;
     // Adota valores salvos como novo baseline
     setBaseline(values);
     form.reset(values);
+    setHasRestoredEdits(false);
   }
 
   function handleReload() {
@@ -98,6 +142,7 @@ export function ReportEditor({
     };
     setBaseline(serverValues);
     form.reset(serverValues);
+    setHasRestoredEdits(false);
     setReloadConfirmOpen(false);
   }
 
@@ -105,13 +150,14 @@ export function ReportEditor({
   const canPublish = hasSavedDraft && !isDirty && !disabled;
 
   return (
-    <div className="space-y-6">
+    <div className="rounded-xl border border-border bg-card p-5 shadow-card sm:p-8">
       <form
         onSubmit={(event) => {
           void form.handleSubmit(handleSubmit)(event);
         }}
         noValidate
-        className="space-y-6"
+        className="space-y-7"
+        style={{ paddingBottom: actionLayout.docked ? actionLayout.height + 24 : undefined }}
       >
         {Object.keys(errors).length > 0 && (
           <p
@@ -126,11 +172,17 @@ export function ReportEditor({
           <Label htmlFor="report-title">Título</Label>
           <Input
             id="report-title"
+            className="scroll-mt-32 lg:scroll-mt-8"
+            style={fieldScrollStyle}
+            onFocus={revealField}
             {...form.register('title')}
             disabled={disabled}
             aria-invalid={!!errors.title}
-            aria-describedby={errors.title ? 'report-title-error' : undefined}
+            aria-describedby={`report-title-count${errors.title ? ' report-title-error' : ''}`}
           />
+          <p id="report-title-count" className="text-right text-xs tabular-nums text-muted-foreground">
+            {titleLength} / 120 caracteres
+          </p>
           {errors.title && (
             <p id="report-title-error" role="alert" className="text-sm text-destructive">
               {errors.title.message}
@@ -143,11 +195,17 @@ export function ReportEditor({
           <Textarea
             id="report-body"
             rows={10}
+            className="min-h-72 scroll-mt-32 leading-relaxed sm:p-5 lg:scroll-mt-8"
+            style={fieldScrollStyle}
+            onFocus={revealField}
             {...form.register('body')}
             disabled={disabled}
             aria-invalid={!!errors.body}
-            aria-describedby={errors.body ? 'report-body-error' : undefined}
+            aria-describedby={`report-body-count${errors.body ? ' report-body-error' : ''}`}
           />
+          <p id="report-body-count" className="text-right text-xs tabular-nums text-muted-foreground">
+            {bodyLength} / 10.000 caracteres
+          </p>
           {errors.body && (
             <p id="report-body-error" role="alert" className="text-sm text-destructive">
               {errors.body.message}
@@ -159,11 +217,17 @@ export function ReportEditor({
           <Label htmlFor="report-professional-name">Profissional responsável</Label>
           <Input
             id="report-professional-name"
+            className="scroll-mt-32 lg:scroll-mt-8"
+            style={fieldScrollStyle}
+            onFocus={revealField}
             {...form.register('professionalName')}
             disabled={disabled}
             aria-invalid={!!errors.professionalName}
-            aria-describedby={errors.professionalName ? 'report-professional-name-error' : undefined}
+            aria-describedby={`report-professional-name-count${errors.professionalName ? ' report-professional-name-error' : ''}`}
           />
+          <p id="report-professional-name-count" className="text-right text-xs tabular-nums text-muted-foreground">
+            {professionalNameLength} / 120 caracteres
+          </p>
           {errors.professionalName && (
             <p
               id="report-professional-name-error"
@@ -175,37 +239,65 @@ export function ReportEditor({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={disabled}>
-              {isSaving ? 'Salvando…' : 'Salvar rascunho'}
-            </Button>
-            {hasSavedDraft && (
+        <div
+          ref={actionBarRef}
+          role="group"
+          aria-label="Ações do laudo"
+          className={actionLayout.docked
+            ? 'fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card lg:left-60'
+            : 'border-t border-border'}
+        >
+          <div
+            className={actionLayout.docked
+              ? 'mx-auto w-full max-w-7xl px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-8 lg:px-10 xl:px-12'
+              : 'pt-6'}
+          >
+            <div className="grid grid-cols-2 items-center gap-3 sm:flex sm:flex-wrap sm:justify-end">
+              <Button type="submit" disabled={disabled} className="min-w-0 px-3 whitespace-normal">
+                {isSaving ? 'Salvando…' : 'Salvar rascunho'}
+              </Button>
               <Button
+                id="report-publish-trigger"
                 type="button"
                 variant="outline"
-                disabled={disabled}
-                onClick={handleReload}
+                disabled={!canPublish}
+                onClick={onPublishClick}
+                aria-describedby={isDirty ? 'report-publish-hint' : undefined}
+                className="min-w-0 px-3 whitespace-normal"
               >
-                Recarregar rascunho
+                {isPublishing ? 'Publicando…' : 'Publicar'}
               </Button>
-            )}
-          </div>
 
-          <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center">
-            {isDirty && (
-              <p className="text-sm text-warning" role="status">
-                Salve o rascunho antes de publicar.
-              </p>
-            )}
-            <Button
-              type="button"
-              variant="outline"
-              disabled={!canPublish}
-              onClick={onPublishClick}
-            >
-              {isPublishing ? 'Publicando…' : 'Publicar'}
-            </Button>
+              <div
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                className={`min-w-0 space-y-1 text-sm sm:order-first sm:mr-auto sm:max-w-xs${hasSavedDraft ? '' : ' col-span-2'}`}
+              >
+                <p className={isDirty ? 'font-medium text-warning' : 'text-muted-foreground'}>
+                  {isDirty
+                    ? 'Alterações não salvas'
+                    : hasSavedDraft ? 'Rascunho salvo no sistema' : 'Rascunho ainda não salvo'}
+                </p>
+                {isDirty && (
+                  <p id="report-publish-hint" className="text-xs text-warning">
+                    Salve o rascunho antes de publicar.
+                  </p>
+                )}
+              </div>
+
+              {hasSavedDraft && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={handleReload}
+                  className="min-w-0 px-3 whitespace-normal"
+                >
+                  Recarregar rascunho
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </form>

@@ -21,18 +21,18 @@ export function EmptyState({
     <div
       data-slot="empty-state"
       className={cn(
-        'flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed border-border/80 bg-card/60 p-8 text-center text-card-foreground',
+        'flex min-h-72 flex-col items-center justify-center rounded-xl bg-card p-8 text-center text-card-foreground',
         className,
       )}
     >
-      <div className="flex size-12 items-center justify-center rounded-full bg-secondary text-secondary-foreground mb-4">
+      <div className="mb-5 flex size-14 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
         <Icon aria-hidden="true" className="size-6 shrink-0 text-brand-700" />
       </div>
-      <h3 className="font-display text-base font-semibold text-foreground max-w-md">
+      <h3 className="max-w-md font-display text-xl font-semibold text-foreground">
         {title}
       </h3>
       {description && (
-        <p className="mt-1 text-sm text-muted-foreground max-w-md">
+        <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
           {description}
         </p>
       )}

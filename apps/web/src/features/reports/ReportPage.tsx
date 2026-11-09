@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
-import { Link, useBlocker, useParams } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useBlocker, useParams, useSearchParams } from 'react-router';
 import { AlertDialog } from 'radix-ui';
 import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import type { CreateReportRequest, StaffReport } from '@drlaudo/contract';
+import { LocalDateSchema, UUIDSchema, type CreateReportRequest, type StaffReport } from '@drlaudo/contract';
 import {
   useCreateReportMutation,
   useGetAppointmentQuery,
@@ -18,15 +18,31 @@ import { PublishDialog } from '../../components/product/PublishDialog';
 import { ReportEditor } from '../../components/product/ReportEditor';
 import { ReportViewer } from '../../components/product/ReportViewer';
 import { TimezoneNote } from '../../components/product/TimezoneNote';
-import { formatDateTime } from '../../lib/time';
+import { formatDateTime, todayDate } from '../../lib/time';
 import { getErrorMessage } from '../../lib/errors';
 
 export function ReportPage() {
   const { id } = useParams<{ id: string }>();
+  const [params] = useSearchParams();
 
   // Consultas independentes com reconciliação estrita
   const appointmentQuery = useGetAppointmentQuery(id ?? '', { skip: !id });
   const reportQuery = useGetReportQuery(id ?? '', { skip: !id });
+
+  // Contexto de navegação da tela; não integra as consultas de detalhe/laudo.
+  const requestedDate = LocalDateSchema.safeParse(params.get('date'));
+  const requestedPatient = UUIDSchema.safeParse(params.get('patientId'));
+  const confirmedAppointment = appointmentQuery.currentData?.id === id ? appointmentQuery.currentData : undefined;
+  const returnDate = requestedDate.success && params.getAll('date').length === 1
+    ? requestedDate.data
+    : confirmedAppointment ? todayDate(new Date(confirmedAppointment.startsAt)) : null;
+  const returnPatientId = requestedPatient.success && params.getAll('patientId').length === 1
+    ? requestedPatient.data : null;
+  const agendaParams = new URLSearchParams({
+    ...(returnDate ? { date: returnDate } : {}),
+    ...(returnPatientId ? { patientId: returnPatientId } : {}),
+  });
+  const agendaHref = `/agenda${agendaParams.size ? `?${agendaParams}` : ''}`;
 
   const [createReport, creation] = useCreateReportMutation();
   const [updateReport, updating] = useUpdateReportMutation();
@@ -39,6 +55,10 @@ export function ReportPage() {
   const [unsavedEdits, setUnsavedEdits] = useState<CreateReportRequest | null>(null);
   const [lastSavedReport, setLastSavedReport] = useState<StaffReport | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const savedReport = lastSavedReport?.appointmentId === id ? lastSavedReport : null;
+  const currentReport = savedReport
+    ?? (reportQuery.currentData?.appointmentId === id ? reportQuery.currentData : null)
+    ?? null;
 
   // Limpa estados ao trocar de id de rota
   useEffect(() => {
@@ -50,6 +70,9 @@ export function ReportPage() {
     setLastSavedReport(null);
     setFeedback(null);
   }, [id]);
+  useEffect(() => {
+    if (formDirty) setFeedback(null);
+  }, [formDirty]);
 
   const isSaving = creation.isLoading || updating.isLoading;
   const isPublishing = publishing.isLoading;
@@ -82,17 +105,23 @@ export function ReportPage() {
   async function handleRetryBoth() {
     setReconciling(true);
     try {
-      await Promise.all([appointmentQuery.refetch(), reportQuery.refetch()]);
+      const [, report] = await Promise.all([appointmentQuery.refetch(), reportQuery.refetch()]);
+      if (report.isSuccess && report.data && report.data.appointmentId === id) {
+        setLastSavedReport(report.data);
+      }
     } finally {
       setReconciling(false);
     }
   }
 
-  async function handleSave(values: CreateReportRequest) {
-    if (isPending || !appointmentQuery.currentData) return;
+  async function handleSave(
+    values: CreateReportRequest,
+    unsavedValues: CreateReportRequest,
+  ): Promise<boolean> {
+    if (isPending || appointmentQuery.currentData?.status !== 'SCHEDULED' || currentReport?.status === 'PUBLISHED') return false;
     setMutationError(null);
+    setFeedback(null);
     const appointment = appointmentQuery.currentData;
-    const currentReport = lastSavedReport ?? reportQuery.currentData ?? null;
 
     try {
       let saved: StaffReport;
@@ -112,20 +141,22 @@ export function ReportPage() {
       setUnsavedEdits(null);
       setFeedback('Rascunho salvo.');
       toast.success('Rascunho salvo.');
+      return true;
     } catch (cause) {
       const message = getErrorMessage(cause);
       setMutationError(message);
       toast.error(message);
       // Preserva o texto digitado em memória
-      setUnsavedEdits(values);
+      setUnsavedEdits(unsavedValues);
       // Reconcilia detalhe e laudo
       await handleRetryBoth();
+      return false;
     }
   }
 
   async function handlePublish() {
-    const currentReport = lastSavedReport ?? reportQuery.currentData;
-    if (isPending || !currentReport) return;
+    if (isPending || formDirty || currentReport?.status !== 'DRAFT'
+      || appointmentQuery.currentData?.status !== 'SCHEDULED') return;
     setMutationError(null);
 
     try {
@@ -143,17 +174,76 @@ export function ReportPage() {
     }
   }
 
+  const preservedEdits = unsavedEdits && (
+    <section role="alert" aria-label="Alterações locais não salvas" className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+      <p className="font-semibold text-foreground">Alterações não salvas preservadas em memória:</p>
+      <p className="mt-1 break-words"><strong>Título:</strong> {unsavedEdits.title}</p>
+      <p className="mt-1 break-words"><strong>Profissional:</strong> {unsavedEdits.professionalName}</p>
+      <div className="mt-2 whitespace-pre-wrap break-words">{unsavedEdits.body}</div>
+    </section>
+  );
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      lastTriggerRef.current = (document.activeElement as HTMLElement) ?? null;
+    }
+  }, [blocker.state]);
+
+  const discardDialog = (
+    <AlertDialog.Root
+      open={blocker.state === 'blocked' && formDirty && !isPending}
+      onOpenChange={(open) => {
+        if (!open && blocker.state === 'blocked') blocker.reset();
+      }}
+    >
+      <AlertDialog.Portal>
+        <AlertDialog.Overlay className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm" />
+        <AlertDialog.Content
+          onCloseAutoFocus={(event) => {
+            if (lastTriggerRef.current && typeof lastTriggerRef.current.focus === 'function') {
+              event.preventDefault();
+              lastTriggerRef.current.focus();
+            }
+          }}
+          className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-xl"
+        >
+          <AlertDialog.Title className="font-display text-xl font-semibold">
+            Descartar alterações?
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mt-3 text-sm leading-relaxed text-muted-foreground">
+            Você tem alterações não salvas no laudo. Se sair, essas alterações serão perdidas.
+          </AlertDialog.Description>
+          <div className="flex flex-wrap justify-end gap-3 pt-4">
+            <AlertDialog.Cancel asChild>
+              <Button variant="outline" onClick={() => blocker.state === 'blocked' && blocker.reset()}>
+                Continuar editando
+              </Button>
+            </AlertDialog.Cancel>
+            <AlertDialog.Action asChild>
+              <Button variant="destructive" onClick={() => blocker.state === 'blocked' && blocker.proceed()}>
+                Descartar alterações
+              </Button>
+            </AlertDialog.Action>
+          </div>
+        </AlertDialog.Content>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+
   if (!id) {
     return (
-      <EmptyState
-        title="Não encontramos este registro"
-        description="Identificador de agendamento não informado."
-        action={
-          <Button asChild>
-            <Link to="/agenda">Voltar para a agenda</Link>
-          </Button>
-        }
-      />
+      <>
+        <EmptyState
+          title="Não encontramos este registro"
+          description="Identificador de agendamento não informado."
+          action={
+            <Button asChild>
+              <Link to={agendaHref}>Voltar para a agenda</Link>
+            </Button>
+          }
+        />
+        {discardDialog}
+      </>
     );
   }
 
@@ -171,23 +261,32 @@ export function ReportPage() {
     const status = appointmentQuery.error && 'status' in appointmentQuery.error ? appointmentQuery.error.status : 500;
     if (status === 404) {
       return (
-        <EmptyState
-          title="Não encontramos este registro"
-          description="O agendamento solicitado não foi encontrado."
-          action={
-            <Button asChild>
-              <Link to="/agenda">Voltar para a agenda</Link>
-            </Button>
-          }
-        />
+        <>
+          <EmptyState
+            title="Não encontramos este registro"
+            description="O agendamento solicitado não foi encontrado."
+            action={
+              <Button asChild>
+                <Link to={agendaHref}>Voltar para a agenda</Link>
+              </Button>
+            }
+          />
+          {discardDialog}
+        </>
       );
     }
     return (
       <div role="alert" className="p-8 text-center">
         <p className="text-sm text-destructive">Algo deu errado. Tente novamente em instantes.</p>
-        <Button variant="outline" className="mt-4" onClick={() => void handleRetryBoth()}>
-          Tentar novamente
-        </Button>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Button variant="outline" onClick={() => void handleRetryBoth()}>
+            Tentar novamente
+          </Button>
+          <Button asChild variant="outline">
+            <Link to={agendaHref}>Voltar para a agenda</Link>
+          </Button>
+        </div>
+        {discardDialog}
       </div>
     );
   }
@@ -213,9 +312,15 @@ export function ReportPage() {
         <p className="text-sm text-destructive">
           Inconsistência na recuperação do laudo. Não foi possível carregar os dados.
         </p>
-        <Button variant="outline" className="mt-4" onClick={() => void handleRetryBoth()}>
-          Tentar novamente
-        </Button>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Button variant="outline" onClick={() => void handleRetryBoth()}>
+            Tentar novamente
+          </Button>
+          <Button asChild variant="outline">
+            <Link to={agendaHref}>Voltar para a agenda</Link>
+          </Button>
+        </div>
+        {discardDialog}
       </div>
     );
   }
@@ -227,9 +332,15 @@ export function ReportPage() {
         <p className="text-sm text-destructive">
           Não foi possível carregar os dados do laudo. Tente novamente.
         </p>
-        <Button variant="outline" className="mt-4" onClick={() => void handleRetryBoth()}>
-          Tentar novamente
-        </Button>
+        <div className="mt-4 flex flex-wrap justify-center gap-3">
+          <Button variant="outline" onClick={() => void handleRetryBoth()}>
+            Tentar novamente
+          </Button>
+          <Button asChild variant="outline">
+            <Link to={agendaHref}>Voltar para a agenda</Link>
+          </Button>
+        </div>
+        {discardDialog}
       </div>
     );
   }
@@ -244,14 +355,14 @@ export function ReportPage() {
   }
 
   const resolvedReport: StaffReport | null =
-    lastSavedReport ?? (hasReportSummary ? reportQuery.currentData ?? null : null);
+    savedReport ?? (hasReportSummary ? currentReport : null);
 
   // Caso 1: Agendamento cancelado
   if (appointment.status === 'CANCELED') {
     return (
       <div className="space-y-6">
         <Link
-          to="/agenda"
+          to={agendaHref}
           className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-primary"
         >
           <ChevronLeft className="size-4" aria-hidden />
@@ -271,23 +382,17 @@ export function ReportPage() {
           <TimezoneNote />
         </div>
 
+        {preservedEdits}
         {resolvedReport ? (
           <div className="space-y-4">
             <p role="alert" className="rounded-lg bg-warning-soft p-4 text-sm text-warning font-medium">
               O agendamento foi cancelado; o laudo está bloqueado.
             </p>
-            {unsavedEdits && (
-              <div role="alert" className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
-                <p className="font-semibold text-foreground">Alterações não salvas preservadas em memória:</p>
-                <p className="mt-1"><strong>Título:</strong> {unsavedEdits.title}</p>
-                <p className="mt-1"><strong>Profissional:</strong> {unsavedEdits.professionalName}</p>
-                <div className="mt-2 whitespace-pre-wrap">{unsavedEdits.body}</div>
-              </div>
-            )}
             <ReportViewer
               report={resolvedReport}
               startsAt={appointment.startsAt}
               examName={appointment.examType.name}
+              headingLevel={2}
             />
           </div>
         ) : (
@@ -295,6 +400,7 @@ export function ReportPage() {
             Agendamento cancelado. Não é possível cadastrar laudo.
           </p>
         )}
+        {discardDialog}
       </div>
     );
   }
@@ -304,7 +410,7 @@ export function ReportPage() {
     return (
       <div className="space-y-6">
         <Link
-          to="/agenda"
+          to={agendaHref}
           className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-primary"
         >
           <ChevronLeft className="size-4" aria-hidden />
@@ -322,11 +428,14 @@ export function ReportPage() {
             {feedback}
           </p>
         )}
+        {preservedEdits}
         <ReportViewer
           report={resolvedReport}
           startsAt={appointment.startsAt}
           examName={appointment.examType.name}
+          headingLevel={2}
         />
+        {discardDialog}
       </div>
     );
   }
@@ -335,7 +444,7 @@ export function ReportPage() {
   return (
     <div className="space-y-6">
       <Link
-        to="/agenda"
+        to={agendaHref}
         className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-primary"
       >
         <ChevronLeft className="size-4" aria-hidden />
@@ -347,13 +456,13 @@ export function ReportPage() {
         description="Escreva, salve o rascunho e publique o resultado para o paciente."
       />
 
-      <div className="rounded-xl border bg-card p-6 text-sm">
+      <div className="border-y border-border py-5 text-sm">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <strong className="block text-base text-foreground">{appointment.patient.name}</strong>
+            <strong className="block font-display text-lg font-semibold text-foreground">{appointment.patient.name}</strong>
             <span className="mt-1 block text-muted-foreground">{appointment.examType.name}</span>
           </div>
-          <div className="text-right">
+          <div className="sm:text-right">
             <span className="block tabular-nums font-medium text-foreground">
               {formatDateTime(appointment.startsAt)}
             </span>
@@ -367,7 +476,7 @@ export function ReportPage() {
           {mutationError}
         </p>
       )}
-      {feedback && (
+      {feedback && !formDirty && (
         <p role="status" aria-live="polite" className="text-sm font-medium text-highlight-strong">
           {feedback}
         </p>
@@ -390,41 +499,12 @@ export function ReportPage() {
         open={publishDialogOpen}
         onOpenChange={setPublishDialogOpen}
         appointment={appointment}
-        pending={isPublishing}
+        savedReport={resolvedReport}
+        pending={isPending}
         onConfirm={handlePublish}
       />
 
-      {/* Diálogo de confirmação de descarte de alterações na navegação interna */}
-      <AlertDialog.Root
-        open={blocker.state === 'blocked' && formDirty && !isPending}
-        onOpenChange={(open) => {
-          if (!open && blocker.state === 'blocked') blocker.reset();
-        }}
-      >
-        <AlertDialog.Portal>
-          <AlertDialog.Overlay className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm" />
-          <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-xl">
-            <AlertDialog.Title className="font-display text-xl font-semibold">
-              Descartar alterações?
-            </AlertDialog.Title>
-            <AlertDialog.Description className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Você tem alterações não salvas no laudo. Se sair, essas alterações serão perdidas.
-            </AlertDialog.Description>
-            <div className="flex flex-wrap justify-end gap-3 pt-4">
-              <AlertDialog.Cancel asChild>
-                <Button variant="outline" onClick={() => blocker.state === 'blocked' && blocker.reset()}>
-                  Continuar editando
-                </Button>
-              </AlertDialog.Cancel>
-              <AlertDialog.Action asChild>
-                <Button variant="destructive" onClick={() => blocker.state === 'blocked' && blocker.proceed()}>
-                  Descartar alterações
-                </Button>
-              </AlertDialog.Action>
-            </div>
-          </AlertDialog.Content>
-        </AlertDialog.Portal>
-      </AlertDialog.Root>
+      {discardDialog}
     </div>
   );
 }
