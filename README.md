@@ -159,14 +159,4 @@ Tempo aproximado informado pela autora: **5 horas** até 09/11/2026; ver registr
 
 A API executa TypeScript via `tsx`; JWT em localStorage e sem revogação é limitado à demo; edições concorrentes de rascunho têm última gravação por campo enviado. Sem PDF, anexos, DICOM, assinatura digital, recuperação de senha, múltiplas salas, notificações ou tema escuro. Dados demo envelhecem por desenho. A demo pública foi implantada por autorização específica; aprovação visual humana, leitor de tela nativo e celular físico não foram homologados. Uso clínico real exige novo desenho de privacidade, segurança e operação.
 
-## Entrega ao avaliador
-
-- Repositório público: <https://github.com/zaairaag/drlaudo>. O avaliador pode consultar e clonar o código sem convite.
-- Alternativa aceita pelo enunciado: enviar um ZIP das fontes, incluindo arquivos ocultos de configuração, `package-lock.json`, migrations, `.env.example` e documentação. Não incluir `.git`, `.env`, credenciais privadas, `node_modules`, builds, relatórios ou estado local do editor/IA.
-- A demo online complementa o código e as instruções reproduzíveis; não substitui a entrega do repositório ou ZIP.
-- Resultado automatizado registrado: **1.290 testes** (514 contrato + 314 API/unidade + 424 web + 38 E2E), conforme [TESTING](docs/TESTING.md). São resultados da execução técnica anterior, não uma nova execução integral a cada revisão documental.
-- Smoke público em 09/11/2026: **3/3**, verificando API/banco e login/leitura da equipe e do paciente, sem criar ou alterar dados de negócio.
-- CI remoto aprovado em 09/11/2026 na revisão `9f11486`: [execução completa](https://github.com/zaairaag/drlaudo/actions/runs/42659130337), incluindo instalação limpa, lint, typecheck, arquitetura, testes reais, build, E2E e prova do proxy Docker.
-- Pendências transparentes: aprovação visual/UX humana, leitor de tela nativo, celular físico e meta de instalação abaixo de cinco minutos não medida.
-
 Projeto fictício para desafio técnico · dados de demonstração.
