@@ -166,6 +166,7 @@ A API executa TypeScript via `tsx`; JWT em localStorage e sem revogação é lim
 - A demo online complementa o código e as instruções reproduzíveis; não substitui a entrega do repositório ou ZIP.
 - Resultado automatizado registrado: **1.290 testes** (514 contrato + 314 API/unidade + 424 web + 38 E2E), conforme [TESTING](docs/TESTING.md). São resultados da execução técnica anterior, não uma nova execução integral a cada revisão documental.
 - Smoke público em 09/11/2026: **3/3**, verificando API/banco e login/leitura da equipe e do paciente, sem criar ou alterar dados de negócio.
-- Pendências transparentes: aprovação visual/UX humana, leitor de tela nativo, celular físico, meta de instalação abaixo de cinco minutos não medida e CI remoto sem execução bem-sucedida confirmada. O histórico de verificação local não deve ser apresentado como CI verde.
+- CI remoto aprovado em 09/11/2026 na revisão `9f11486`: [execução completa](https://github.com/zaairaag/drlaudo/actions/runs/42659130337), incluindo instalação limpa, lint, typecheck, arquitetura, testes reais, build, E2E e prova do proxy Docker.
+- Pendências transparentes: aprovação visual/UX humana, leitor de tela nativo, celular físico e meta de instalação abaixo de cinco minutos não medida.
 
 Projeto fictício para desafio técnico · dados de demonstração.
