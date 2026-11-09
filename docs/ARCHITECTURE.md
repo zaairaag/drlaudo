@@ -129,4 +129,14 @@ Nginx serve SPA somente para telas; API desconhecida permanece JSON, não HTML. 
 
 CI em checkout limpo executa instalação, lint, typecheck, arquitetura, build, testes reais e E2E separado. Produção sem MSW/worker/controles/design-system é um gate de artefato, não promessa de tree-shaking.
 
-Limites: localStorage/JWT sem revogação, saves DRAFT última escrita vence, demo envelhece, sem auditoria/assinatura/retenção clínica e bundle a otimizar quando medido. Sem PDF/anexos/DICOM/múltiplas salas/notificações/dark mode. Deploy público/TLS/domínio requer alvo, segredos, backup, rollback e autorização próprios; não integra publicação desta entrega local.
+Limites: localStorage/JWT sem revogação, saves DRAFT última escrita vence, demo envelhece, sem auditoria/assinatura/retenção clínica e bundle a otimizar quando medido. Sem PDF/anexos/DICOM/múltiplas salas/notificações/dark mode. A implantação de demonstração abaixo não torna a aplicação apta a uso clínico real.
+
+### 11.1 Implantação pública de demonstração
+
+Em 2026-11-09, após autorização específica da autora, a aplicação foi implantada em <https://drlaudo.zairagoncalves.com>. Cloudflare termina HTTPS e encaminha pelo Tunnel para Nginx em loopback na porta 8090 da VPS. Docker Compose executa web, API e PostgreSQL; API e banco não têm portas publicadas no host. O segredo JWT é externo e exclusivo do ambiente; nenhum valor privado pertence à documentação pública.
+
+O Nginx entregue usa `CF-Connecting-IP` quando presente e, na ausência, `$remote_addr`, substituindo `X-Real-IP`/`X-Forwarded-For` antes da API (`TRUST_PROXY_HOPS=1`). Essa configuração pressupõe origem acessível somente pelo caminho controlado do Tunnel/loopback: o cabeçalho não é prova de identidade em uma origem diretamente exposta. Não publicar essa porta em interfaces externas sem revisar a fronteira de confiança.
+
+Migrations e seed rodam no launcher Compose. O volume demonstrativo persiste alterações; reiniciar não restaura a massa. A data inicial foi 10/11/2026, independente da data em que o avaliador abrir a demo. Acesso público com contas STAFF conhecidas permite alterações de dados fictícios e não oferece garantia de demonstração imutável.
+
+Smoke público e limites constam de TESTING. Backup/restauração e rollback operacional não foram comprovados nesta implantação; não há SLA ou autorização para dados reais. Uma atualização de aplicação não autoriza apagar o volume nem reaplicar uma massa destrutiva.

@@ -6,6 +6,12 @@ Aplicação fictícia para desafio técnico. A equipe cadastra/edita pacientes, 
 
 **Demo online:** <https://drlaudo.zairagoncalves.com> · **Stack:** React + TypeScript + RTK Query; Node 22.22.2 + Fastify 5; Prisma 7 + PostgreSQL 16. Contrato Zod compartilhado, testes Vitest e Playwright/axe. [Enunciado](docs/DESAFIO.md) · [Requisitos](docs/PRD.md) · [Evidências e limites](docs/TESTING.md).
 
+## Acesso rápido à demonstração
+
+Abra a demo online acima, selecione um perfil demonstrativo e clique em **Entrar**. As credenciais estão na tabela abaixo. A equipe pode cadastrar pacientes, agendar/cancelar exames e salvar/publicar laudos; o paciente consulta apenas seus próprios exames e laudos publicados.
+
+Na agenda, selecione **10/11/2026** para consultar a massa inicial desta implantação. O seed é idempotente e não desloca datas; como as contas são públicas, alterações feitas por visitantes podem mudar a demonstração.
+
 ## Executar com Docker
 
 Na raiz do repositório:
@@ -151,6 +157,15 @@ As provas adicionais abrangem transações/locks, corridas, imutabilidade, rollb
 
 Tempo aproximado informado pela autora: **5 horas** até 09/11/2026; ver registro factual em AI_USAGE.
 
-A API executa TypeScript via `tsx`; JWT em localStorage e sem revogação é limitado à demo; edições concorrentes de rascunho têm última gravação por campo enviado. Sem PDF, anexos, DICOM, assinatura digital, recuperação de senha, múltiplas salas, notificações ou tema escuro. Dados demo envelhecem por desenho. Deploy público e aprovação visual humana não são presumidos; uso clínico real exige novo desenho de privacidade, segurança e operação.
+A API executa TypeScript via `tsx`; JWT em localStorage e sem revogação é limitado à demo; edições concorrentes de rascunho têm última gravação por campo enviado. Sem PDF, anexos, DICOM, assinatura digital, recuperação de senha, múltiplas salas, notificações ou tema escuro. Dados demo envelhecem por desenho. A demo pública foi implantada por autorização específica; aprovação visual humana, leitor de tela nativo e celular físico não foram homologados. Uso clínico real exige novo desenho de privacidade, segurança e operação.
+
+## Entrega ao avaliador
+
+- Repositório público: <https://github.com/zaairaag/drlaudo>. O avaliador pode consultar e clonar o código sem convite.
+- Alternativa aceita pelo enunciado: enviar um ZIP das fontes, incluindo arquivos ocultos de configuração, `package-lock.json`, migrations, `.env.example` e documentação. Não incluir `.git`, `.env`, credenciais privadas, `node_modules`, builds, relatórios ou estado local do editor/IA.
+- A demo online complementa o código e as instruções reproduzíveis; não substitui a entrega do repositório ou ZIP.
+- Resultado automatizado registrado: **1.290 testes** (514 contrato + 314 API/unidade + 424 web + 38 E2E), conforme [TESTING](docs/TESTING.md). São resultados da execução técnica anterior, não uma nova execução integral a cada revisão documental.
+- Smoke público em 09/11/2026: **3/3**, verificando API/banco e login/leitura da equipe e do paciente, sem criar ou alterar dados de negócio.
+- Pendências transparentes: aprovação visual/UX humana, leitor de tela nativo, celular físico, meta de instalação abaixo de cinco minutos não medida e CI remoto sem execução bem-sucedida confirmada. O histórico de verificação local não deve ser apresentado como CI verde.
 
 Projeto fictício para desafio técnico · dados de demonstração.

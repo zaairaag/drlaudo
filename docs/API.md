@@ -254,7 +254,7 @@ Corpo compacto canônico NOT_FOUND, inclusive STAFF:
 | `TOO_SHORT` | `Valor menor que o limite permitido.` | Abaixo do mínimo após normalizar. |
 | `TOO_LONG` | `Valor maior que o limite permitido.` | Acima do máximo. |
 | `UNKNOWN_FIELD` | `Campo não permitido.` | Propriedade/chave fora do schema. |
-| `EMPTY_PATCH` | `Informe ao menos um campo.` | Nenhum dos três campos editáveis presente. |
+| `EMPTY_PATCH` | `Informe ao menos um campo.` | Nenhum campo editável reconhecido presente; três campos em laudos, dois em pacientes. |
 | `UNEXPECTED_BODY` | `Não envie corpo nesta requisição.` | Corpo não vazio em rota sem corpo. |
 | `INVALID_JSON` | `Envie JSON válido.` | Falha sintática do parser. |
 | `DUPLICATE_QUERY` | `Informe este parâmetro uma única vez.` | Query repetida. |

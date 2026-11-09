@@ -1,6 +1,6 @@
 # Decisões — Dr. Laudo
 
-**Estado:** Specify e plano aprovados, Fase A autorizada em 2026-11-08; T1 inicia contrato/tooling. Autoridade: [DESAFIO](DESAFIO.md) → [PRD](PRD.md); comportamento no PRD, wire contract em [API](API.md), mecanismo em [ARCHITECTURE](ARCHITECTURE.md), provas em [TESTING](TESTING.md). D-01…41 preservam identidade e histórico. Dependências entram somente com uso, nas unidades autorizadas.
+**Estado:** contrato, frontend, API/PostgreSQL e entrega Docker/E2E implementados; provas e limitações em [TESTING](TESTING.md). Demo pública implantada em 2026-11-09 por autorização específica. Autoridade: [DESAFIO](DESAFIO.md) → [PRD](PRD.md); comportamento no PRD, wire contract em [API](API.md), mecanismo em [ARCHITECTURE](ARCHITECTURE.md). As decisões datadas preservam o histórico; não descrevem todas o estado atual nem concedem novas autorizações.
 
 ## Registro
 **D-01 — npm workspaces.** Um repositório/install e contrato compartilhado, sem Nx/Turborepo. A contém contract/web; API só B e E2E só C. Não criar workspaces vazios.
@@ -67,7 +67,7 @@
 
 **D-32 — Select/DTO e schema de saída.** API/mock/cliente executam schemas do contrato. PATIENT usa sub no where e PUBLISHED na leitura. Quatro404 canônicos sem details/id/cabeçalho distintivo. Saída inválida falha sanitizada; entidade crua nunca é fallback.
 
-**D-33 — Health503 usa INTERNAL_ERROR.** SELECT1 real; sucesso status/db ok. Falha retorna a mensagem canônica existente, sem DB_ERROR/driver/URL/stack. Preserva os13ErrorCode, mock só simula.
+**D-33 — Health503 usa INTERNAL_ERROR.** SELECT1 real; sucesso status/db ok. Falha retorna a mensagem canônica existente, sem DB_ERROR/driver/URL/stack. Não acrescenta código específico de banco; o inventário atual tem 14 ErrorCode após EMAIL_TAKEN (D-47). Mock só simula.
 
 **D-34 — Produção depende de alvo autorizado.** Operador fornece domínio/segredos externos e valida proxy:0local,1Nginx,2Traefik+Nginx sem bypass. A responsável de produto autoriza alvo exato; smoke só leitura. Sem autorização T-21 não executa nem bloqueia entrega local. Noindex não autentica.
 
@@ -99,7 +99,7 @@ Atualização de estado (2026-11-08): a responsável de produto aprovou o Specif
 Não é aceitação de risco vermelho. Risco, evidência e eventual aceite explícito seguem para coordenação e responsável de produto, sem segunda fila operacional neste registro.
 
 ## Dependências registradas
-Planejadas para a aplicação; conferir versões/engines e lockfile na fase autorizada. TLC é ferramenta documental instalada, não dependência runtime do produto.
+Registro das dependências adotadas por fase e motivo. Os manifestos e o lockfile definem os pacotes e versões efetivamente entregues; registros de aprovação inicial abaixo são históricos. TLC é ferramenta documental instalada, não dependência runtime do produto.
 | Fase | Pacotes / motivo |
 |---|---|
 | A | typescript, vite, react, react-dom, @vitejs/plugin-react, tipos React/Node; runtime web/strict/build. |
@@ -128,7 +128,7 @@ T1 autorizada: instalar somente Zod 4.6.7, Vitest 5.1.0, TypeScript 5.9.3, ESLin
 
 **Registro de execução do backend (2026-11-08).** Migration aplicada em PostgreSQL 16, seed idempotente verificado por reexecução e 41 testes de integração cobrindo autenticação, autorização, grade, agendamento concorrente, cancelamento, laudo, imutabilidade, corrida cancelar × publicar e envelope HTTP. Os quatro casos opacos do paciente retornam bytes idênticos. `docker-compose.yml` (demo em `:8080`) e `docker-compose.qa.yml` (QA com `tmpfs`, sem portas) acompanham a entrega.
 
-Novas dependências exigem registro junto da mudança autorizada. As versões da T1 acima são as primeiras instaladas; demais pacotes da tabela continuam planejados.
+Novas dependências exigem registro junto da mudança autorizada. As versões da T1 acima são as primeiras instaladas; os manifestos e o lockfile são a fonte atual, não as previsões das fases anteriores.
 
 Fase A completa autorizada em 2026-11-08: conferir/instalar dependências da tabela com uso real. npm confirmou Vite 8.3.6, React/React DOM 19.3.1, plugin-react 6.2.1, Tailwind/plugin 4.3.5, RTK 2.14.0, React Redux 9.3.1, Router 7.18.5 (manter API v7 do desenho, sem migração v8 incidental), MSW 3.0.4, date-fns 4.4.0/tz 1.5.0, Radix unificado `radix-ui` 1.8.1 (primitivas shadcn locais), Lucide 1.70.0, Sonner 2.0.8, RHF 7.91.0/resolvers 7.0.3, Testing Library React 16.3.3/user-event 14.6.8/DOM 10.4.2/jest-dom 7.0.1 e jsdom 31.0.0. Node mínimo sobe a 22.22.2 por jsdom; runtime local já atende. Fontsource Inter/Jakarta 5.3.0; SVGR 5.2.0; CVA 0.7.1/clsx 2.1.1/tailwind-merge 3.7.0/tw-animate-css 1.4.0. Engines/peers conferidos; lockfile conserva versões efetivamente consumidas. CLI shadcn 4.23.0 é referência de geração, não dependência runtime. Sem novas dependências de backend/infra.
 
@@ -141,3 +141,5 @@ Fase A completa autorizada em 2026-11-08: conferir/instalar dependências da tab
 **D-50 — Proxy e headers em todas as superfícies.** Respeitar a quantidade configurada de proxies confiáveis, sem transformar um hop em confiança irrestrita no X-Forwarded-For do cliente. Nginx deve entregar os headers de segurança também no HTML e nos assets, considerando que `add_header` em `location` substitui a herança. URLs `/api` inválidas não viram SPA nem redirecionam para uma porta diferente.
 
 **D-51 — Verificação reproduzível a partir de fontes.** Scripts que consomem `@drlaudo/contract` devem construir seu artefato antes de resolver os exports, inclusive no typecheck de uma instalação limpa. Arquitetura cobre contrato, API e web, não somente os módulos do contrato. E2E real permanece separado da suíte unitária/componentes/integração, com um worker e zero retries. Artefatos de desenvolvimento não são entregues no build de produção.
+
+**D-52 — Demo pública por Cloudflare Tunnel.** Autorização específica da usuária em 2026-11-09: subir na VPS com subdomínio de `zairagoncalves.com`, usando acessos do LifeOS. Escolhido Tunnel para `drlaudo.zairagoncalves.com` → web em loopback8090, sem publicar API/banco. Nginx repassa o IP Cloudflare sob a premissa de origem controlada (ARCH §11.1). Credenciais demo públicas e alterações persistentes limitam a estabilidade da massa; somente dados fictícios. Smoke público é separado dos testes locais e da aprovação visual humana.

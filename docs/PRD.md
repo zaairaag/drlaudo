@@ -1,7 +1,7 @@
 # Dr. Laudo Specification
 
 **Approved**: 2026-11-08 - user: "pode seguir"
-**Status:** Specify e plano aprovados. Em 2026-11-09, a usuária autorizou “corrija tudo e deixe pronto para entrega”, incluindo as correções da auditoria e o cadastro/gestão administrativa de pacientes já decidido para o produto. A execução técnica não concede aprovação visual/UX humana nem autoriza push ou deploy.
+**Status:** Specify e plano aprovados. Em 2026-11-09, a usuária autorizou “corrija tudo e deixe pronto para entrega”, incluindo as correções da auditoria e o cadastro/gestão administrativa de pacientes já decidido para o produto. Posteriormente autorizou organização dos commits, push e implantação na VPS com subdomínio de `zairagoncalves.com`; a demo está em `https://drlaudo.zairagoncalves.com`. Essas autorizações não concedem aprovação visual/UX humana nem permissão para dados clínicos reais. Evidências e pendências em TESTING.
 **Autoridade:** [DESAFIO](DESAFIO.md) → este Specify canônico → demais documentos. RF/RN preservam identidade e alcance; [DECISIONS](DECISIONS.md) registra os motivos.
 **Entrega:** contrato e frontend compartilhados com API/PostgreSQL reais; gates de segurança, testes, execução limpa e acessibilidade. O Gate A visual/UX continua decisão humana. Três dias de prazo não equivalem a horas dedicadas.
 
@@ -265,7 +265,7 @@ Baseline textual existente, não mockup binding. [TESTING §7](TESTING.md#7-cont
 | Validação/permissão/registro | Erro por campo/resumo; “Você não tem permissão para esta ação.” e home sem retry; “Não encontramos este registro” e lista adequada. |
 | Rede/interno/schema | “Algo deu errado. Tente novamente em instantes.”; leitura retry, mutação reconciliada; sem stack/JSON recebido/código cru. |
 - Acessibilidade: h1 único/landmarks/“Pular para o conteúdo”, labels visíveis/nomes em controles, aria-describedby/aria-invalid, loading sem roubar foco e erro persistente além do toast. Status/slot com texto/ícone/estado acessível, não só cor ou tooltip desabilitado.
-- Meta WCAG 2.1 AA, não certificação: teclado/leitor/foco/reflow/zoom de 200%/movimento reduzido, axe e contraste WebAIM medido antes de alegação pública. Tabela desktop/cards mobile, sem corte a 375 px; baseline completo em ARCH §8.3.
+- Meta WCAG 2.1 AA, não certificação: teclado/leitor/foco/reflow/zoom de 200%/movimento reduzido, axe e contraste WebAIM medido antes de alegação pública. Tabela desktop/cards mobile, sem corte a 375 px; baseline em ARCH §8.
 
 ## Differences from the source
 O núcleo do enunciado é preservado. O cadastro e a edição administrativa de pacientes são um complemento explicitamente incluído pela usuária; não são apresentados como exigência original do teste. Sem cadastro público, exclusão de paciente ou recuperação/reset de senha. As demais decisões herdadas permanecem em Assumptions/DECISIONS.
