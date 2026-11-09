@@ -16,6 +16,31 @@ const timeFormatter = new Intl.DateTimeFormat('pt-BR', {
   minute: '2-digit',
   hourCycle: 'h23',
 });
+const longDateFormatter = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: TIMEZONE,
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+const monthFormatter = new Intl.DateTimeFormat('pt-BR', {
+  timeZone: TIMEZONE,
+  month: 'long',
+  year: 'numeric',
+});
+
+export function formatLongDate(date: string): string {
+  const civil = LocalDateSchema.parse(date);
+  const local = new TZDate(2000, 0, 1, 12, 0, 0, 0, TIMEZONE);
+  local.setFullYear(Number(civil.slice(0, 4)), Number(civil.slice(5, 7)) - 1, Number(civil.slice(8, 10)));
+  const label = longDateFormatter.format(local);
+  return label.charAt(0).toLocaleUpperCase('pt-BR') + label.slice(1);
+}
+
+export function formatMonth(instant: string): string {
+  const label = monthFormatter.format(new Date(instant));
+  return label.charAt(0).toLocaleUpperCase('pt-BR') + label.slice(1);
+}
 
 export function formatDate(instant: string): string {
   return dateFormatter.format(new Date(instant));

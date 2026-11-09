@@ -13,20 +13,32 @@ export function PatientReportPage() {
   const isNotFound = query.error && typeof query.error === 'object' && 'status' in query.error && query.error.status === 404;
 
   return (
-    <div className="space-y-6">
-      <Link
-        className="inline-flex min-h-11 items-center gap-2 text-sm text-muted-foreground hover:text-primary"
-        to="/meus-exames"
-      >
-        <ArrowLeft className="size-4" aria-hidden />
-        Voltar para meus exames
-      </Link>
+    <div className="mx-auto w-full max-w-3xl space-y-6 sm:space-y-7">
+      <nav className="flex items-center border-b pb-3" aria-label="Navegação do laudo">
+        <Link
+          className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
+          to="/meus-exames"
+        >
+          <ArrowLeft className="size-4" aria-hidden />
+          Voltar para meus exames
+        </Link>
+      </nav>
 
       {query.isFetching ? (
-        <div className="space-y-4 rounded-xl border bg-card p-8" role="status" aria-live="polite">
-          <span className="text-sm text-muted-foreground">Carregando resultado do laudo…</span>
-          <div className="h-8 w-1/3 animate-pulse rounded-lg bg-muted" />
-          <div className="h-40 animate-pulse rounded-lg bg-muted" />
+        <div className="rounded-xl border bg-card p-6 sm:p-8" role="status" aria-live="polite">
+          <p className="text-sm text-muted-foreground">Carregando resultado do laudo…</p>
+          <div className="mt-6 space-y-6" aria-hidden>
+            <div className="space-y-3 border-b pb-6">
+              <div className="h-7 w-2/3 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+              <div className="h-4 w-1/2 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+            </div>
+            <div className="space-y-3">
+              <div className="h-4 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+              <div className="h-4 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+              <div className="h-4 w-5/6 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+              <div className="h-4 w-2/3 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+            </div>
+          </div>
         </div>
       ) : isNotFound ? (
         <EmptyState
@@ -39,7 +51,7 @@ export function PatientReportPage() {
           }
         />
       ) : query.isError ? (
-        <div className="rounded-xl border bg-card p-6" role="alert">
+        <div className="rounded-xl border bg-card p-6 sm:p-8" role="alert">
           <p className="text-sm text-destructive">Não foi possível carregar seu laudo.</p>
           <Button variant="outline" className="mt-3" onClick={() => { void query.refetch(); }}>
             Tentar novamente

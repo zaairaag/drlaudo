@@ -6,9 +6,12 @@
   "engines": { "node": ">=22.22.2" },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "prebuild": "npm run build -w @drlaudo/contract",
+    "build": "tsc --noEmit && node ../../scripts/build-web.mjs",
     "preview": "vite preview --host 127.0.0.1",
+    "pretypecheck": "npm run build -w @drlaudo/contract",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run build -w @drlaudo/contract",
     "test": "vitest run"
   },
   "dependencies": {

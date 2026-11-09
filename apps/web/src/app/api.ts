@@ -1,15 +1,15 @@
 import {
-  AppointmentListQuerySchema, CreateAppointmentRequestSchema, CreateReportRequestSchema,
+  AppointmentListQuerySchema, CreateAppointmentRequestSchema, CreatePatientRequestSchema, CreateReportRequestSchema,
   ErrorResponseSchema, ExamTypeListResponseSchema, IdParamsSchema, LoginRequestSchema,
-  LoginResponseSchema, MyAppointmentListResponseSchema, PatientListResponseSchema,
+  LoginResponseSchema, MyAppointmentListResponseSchema, PatientListResponseSchema, PatientSchema,
   PublishedPatientReportSchema, SlotsResponseSchema, SlotQuerySchema,
   StaffAppointmentListResponseSchema, StaffAppointmentSchema, StaffReportSchema,
-  UpdateReportRequestSchema, UserSchema,
-  type AppointmentListQuery, type CreateAppointmentRequest, type CreateReportRequest,
+  UpdatePatientRequestSchema, UpdateReportRequestSchema, UserSchema,
+  type AppointmentListQuery, type CreateAppointmentRequest, type CreatePatientRequest, type CreateReportRequest,
   type ErrorResponse, type ExamTypeListResponse, type LoginRequest, type LoginResponse,
-  type MyAppointmentListResponse, type PatientListResponse, type PublishedPatientReport,
+  type MyAppointmentListResponse, type Patient, type PatientListResponse, type PublishedPatientReport,
   type SlotQuery, type SlotsResponse, type StaffAppointment, type StaffAppointmentListResponse,
-  type StaffReport, type UpdateReportRequest,
+  type StaffReport, type UpdatePatientRequest, type UpdateReportRequest,
 } from '@drlaudo/contract';
 import { createApi, type BaseQueryFn } from '@reduxjs/toolkit/query/react';
 import type { z } from 'zod';
@@ -38,7 +38,7 @@ const unauthorized: ErrorResponse = {
 };
 const errorStatuses = {
   VALIDATION_ERROR: 400, UNAUTHORIZED: 401, FORBIDDEN: 403, NOT_FOUND: 404,
-  SLOT_TAKEN: 409, REPORT_EXISTS: 409, REPORT_LOCKED: 409, CANNOT_CANCEL: 409,
+  SLOT_TAKEN: 409, EMAIL_TAKEN: 409, REPORT_EXISTS: 409, REPORT_LOCKED: 409, CANNOT_CANCEL: 409,
   APPOINTMENT_CANCELED: 409, PAST_DATE: 422, INVALID_SLOT: 422, RATE_LIMITED: 429,
   INTERNAL_ERROR: 500,
 } as const;
@@ -120,7 +120,7 @@ const validatedBaseQuery: BaseQueryFn<ApiRequest, unknown, ApiClientError> = asy
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: validatedBaseQuery,
-  tagTypes: ['Appointment', 'Slot', 'Report', 'MyAppointment'],
+  tagTypes: ['Appointment', 'Slot', 'Report', 'MyAppointment', 'Patient'],
   refetchOnFocus: true,
   refetchOnReconnect: true,
   invalidationBehavior: 'immediately',
@@ -133,6 +133,15 @@ export const api = createApi({
     }),
     getPatients: build.query<PatientListResponse, void>({
       query: () => ({ url: '/patients', responseSchema: PatientListResponseSchema }),
+      providesTags: ['Patient'],
+    }),
+    createPatient: build.mutation<Patient, CreatePatientRequest>({
+      query: (body) => ({ url: '/patients', method: 'POST', body, input: { schema: CreatePatientRequestSchema, value: body, location: 'body' }, expectedStatus: 201, responseSchema: PatientSchema }),
+      invalidatesTags: (_result, error) => error ? [] : ['Patient'],
+    }),
+    updatePatient: build.mutation<Patient, UpdatePatientRequest & { id: string }>({
+      query: ({ id, ...body }) => ({ url: `/patients/${encodeURIComponent(id)}`, method: 'PATCH', body, input: { schema: UpdatePatientRequestSchema, value: body, location: 'body' }, responseSchema: PatientSchema }),
+      invalidatesTags: (_result, error) => error ? [] : ['Patient', 'Appointment'],
     }),
     getExamTypes: build.query<ExamTypeListResponse, void>({
       query: () => ({ url: '/exam-types', responseSchema: ExamTypeListResponseSchema }),
@@ -156,11 +165,11 @@ export const api = createApi({
     }),
     createAppointment: build.mutation<StaffAppointment, CreateAppointmentRequest>({
       query: (body) => ({ url: '/appointments', method: 'POST', body, input: { schema: CreateAppointmentRequestSchema, value: body, location: 'body' }, expectedStatus: 201, responseSchema: StaffAppointmentSchema }),
-      invalidatesTags: (_result, error) => error ? [] : ['Appointment', 'Slot'],
+      invalidatesTags: ['Appointment', 'Slot'],
     }),
     cancelAppointment: build.mutation<StaffAppointment, string>({
       query: (id) => ({ url: `/appointments/${encodeURIComponent(id)}/cancel`, method: 'POST', input: { schema: IdParamsSchema, value: { id }, location: 'params' }, responseSchema: StaffAppointmentSchema }),
-      invalidatesTags: (_result, error) => error ? [] : ['Appointment', 'Slot'],
+      invalidatesTags: ['Appointment', 'Slot'],
     }),
     getReport: build.query<StaffReport, string>({
       query: (appointmentId) => ({ url: `/appointments/${encodeURIComponent(appointmentId)}/report`, input: { schema: IdParamsSchema, value: { id: appointmentId }, location: 'params' }, responseSchema: StaffReportSchema }),
@@ -189,7 +198,7 @@ export const api = createApi({
   }),
 });
 export const {
-  useLoginMutation, useGetMeQuery, useGetPatientsQuery, useGetExamTypesQuery, useGetSlotsQuery,
+  useLoginMutation, useGetMeQuery, useGetPatientsQuery, useCreatePatientMutation, useUpdatePatientMutation, useGetExamTypesQuery, useGetSlotsQuery,
   useGetAppointmentsQuery, useGetAppointmentQuery, useCreateAppointmentMutation, useCancelAppointmentMutation,
   useGetReportQuery, useCreateReportMutation, useUpdateReportMutation, usePublishReportMutation,
   useGetMyAppointmentsQuery, useGetMyReportQuery,

@@ -12,7 +12,11 @@ const NewAppointmentPage = lazy(() => import('./features/appointments/NewAppoint
 const ReportPage = lazy(() => import('./features/reports/ReportPage').then((module) => ({ default: module.ReportPage })));
 const MyAppointmentsPage = lazy(() => import('./features/patient/MyAppointmentsPage').then((module) => ({ default: module.MyAppointmentsPage })));
 const PatientReportPage = lazy(() => import('./features/patient/PatientReportPage').then((module) => ({ default: module.PatientReportPage })));
-const DesignSystemPage = lazy(() => import('./features/status/DesignSystemPage').then((module) => ({ default: module.DesignSystemPage })));
+const PatientsPage = lazy(() => import('./features/patients/PatientsPage').then((module) => ({ default: module.PatientsPage })));
+// A static import would include the development showcase in production output.
+const DesignSystemPage = import.meta.env.DEV
+  ? lazy(() => import('./features/status/DesignSystemPage').then((module) => ({ default: module.DesignSystemPage })))
+  : null;
 
 function IndexRedirect() {
   const { user, status } = useSession();
@@ -23,12 +27,14 @@ function IndexRedirect() {
 }
 
 function SuspenseFallback({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<SessionGate />}>{children}</Suspense>;
+  return (
+    <Suspense fallback={<div role="status" aria-live="polite" className="flex min-h-64 items-center justify-center text-sm text-muted-foreground">Carregando página…</div>}>
+      {children}
+    </Suspense>
+  );
 }
 
 export function createRoutes(): RouteObject[] {
-  const isDev = Boolean(import.meta.env?.DEV);
-
   return [
     {
       element: (
@@ -75,6 +81,14 @@ export function createRoutes(): RouteObject[] {
                     </SuspenseFallback>
                   ),
                 },
+                {
+                  path: '/pacientes',
+                  element: (
+                    <SuspenseFallback>
+                      <PatientsPage />
+                    </SuspenseFallback>
+                  ),
+                },
               ],
             },
           ],
@@ -105,7 +119,7 @@ export function createRoutes(): RouteObject[] {
             },
           ],
         },
-        ...(isDev
+        ...(DesignSystemPage
           ? [
               {
                 path: '/_ds',

@@ -27,7 +27,7 @@ export function DesignSystemPage() {
   const mockControls = useMockControls();
 
   return (
-    <div className="space-y-10 py-4">
+    <div className="mx-auto w-full max-w-6xl space-y-10 px-4 py-8 sm:px-8 sm:py-12">
       {/* Cabeçalho */}
       <PageHeader
         title="Catálogo do Design System"

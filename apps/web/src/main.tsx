@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { RouterProvider } from 'react-router';
 import { store } from './app/store';
-import { MockControlsProvider } from './features/status/MockControlsContext';
 import { router } from './router';
 import './styles/globals.css';
 
@@ -31,13 +30,17 @@ async function bootstrap() {
 
   const container = document.getElementById('root');
   if (!container) throw new Error('Elemento raiz #root não encontrado.');
+  let application: ReactNode = <RouterProvider router={router} />;
+  if (import.meta.env.DEV) {
+    // A static import would retain development controls in the production module graph.
+    const { MockControlsProvider } = await import('./features/status/MockControlsContext');
+    application = <MockControlsProvider controls={mockControls}>{application}</MockControlsProvider>;
+  }
 
   createRoot(container).render(
     <StrictMode>
       <Provider store={store}>
-        <MockControlsProvider controls={mockControls}>
-          <RouterProvider router={router} />
-        </MockControlsProvider>
+        {application}
       </Provider>
     </StrictMode>,
   );

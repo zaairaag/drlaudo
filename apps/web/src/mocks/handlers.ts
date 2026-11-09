@@ -1,5 +1,6 @@
 import {
   CLINIC_TZ,
+  CreatePatientRequestSchema,
   ExamTypeListResponseSchema,
   isPast,
   isValidSlot,
@@ -9,12 +10,14 @@ import {
   generateDaySlots,
   MyAppointmentListResponseSchema,
   PatientListResponseSchema,
+  PatientSchema,
   PublishedPatientReportSchema,
   SlotsResponseSchema,
   StaffAppointmentListResponseSchema,
   StaffAppointmentSchema,
   StaffReportSchema,
   UUIDSchema,
+  UpdatePatientRequestSchema,
   type Role,
   type User,
   type ValidationIssue,
@@ -28,6 +31,7 @@ import {
   errorResponse,
   jsonResponse,
   notFoundResponse,
+  parseBody,
   validationErrorResponse,
 } from './validation.js';
 export interface Clock {
@@ -51,14 +55,14 @@ interface SimulatedTokenClaims {
 const SIGNATURE_SALT = 'drlaudo-mock-auth-simulation-salt';
 
 function toBase64Url(value: string): string {
-  const base64 = btoa(value);
+  const base64 = btoa(String.fromCharCode(...new TextEncoder().encode(value)));
   return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 function fromBase64Url(value: string): string {
   let base64 = value.replace(/-/g, '+').replace(/_/g, '/');
   while (base64.length % 4 !== 0) base64 += '=';
-  return atob(base64);
+  return new TextDecoder().decode(Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)));
 }
 
 function computeSignature(payloadB64: string): string {
@@ -398,6 +402,53 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
       const parsed = PatientListResponseSchema.safeParse(patients);
       if (!parsed.success) return errorResponse('INTERNAL_ERROR', 500);
       return jsonResponse(parsed.data);
+    }),
+
+    http.post('*/api/patients', async ({ request }) => {
+      await applyLatency();
+      const fault = checkRuntimeFaults();
+      if (fault) return fault;
+      const auth = authenticateRequest(request, db, clock);
+      if (!auth.ok) return auth.response;
+      if (auth.user.role !== 'STAFF') return errorResponse('FORBIDDEN', 403);
+      const query = parseAndValidateQuery(request.url, { allowed: [] });
+      const body = await parseBody(request, CreatePatientRequestSchema);
+      const issues = [...(query.ok ? [] : query.issues), ...(body.ok ? [] : body.issues)];
+      if (issues.length > 0) return validationErrorResponse(issues);
+      if (!body.ok) return errorResponse('INTERNAL_ERROR', 500);
+      if (db.users.some((user) => user.email === body.data.email)) return errorResponse('EMAIL_TAKEN', 409);
+      const patient = PatientSchema.safeParse({ id: crypto.randomUUID(), name: body.data.name, email: body.data.email });
+      if (!patient.success) return errorResponse('INTERNAL_ERROR', 500);
+      db.users.push({ ...patient.data, role: 'PATIENT', password: body.data.password, createdAt: clock.now().toISOString() });
+      db.persist();
+      return jsonResponse(patient.data, 201);
+    }),
+
+    http.patch('*/api/patients/:id', async ({ request, params }) => {
+      await applyLatency();
+      const fault = checkRuntimeFaults();
+      if (fault) return fault;
+      const auth = authenticateRequest(request, db, clock);
+      if (!auth.ok) return auth.response;
+      if (auth.user.role !== 'STAFF') return errorResponse('FORBIDDEN', 403);
+      const id = UUIDSchema.safeParse(params.id);
+      const query = parseAndValidateQuery(request.url, { allowed: [] });
+      const body = await parseBody(request, UpdatePatientRequestSchema);
+      const issues = [
+        ...(id.success ? [] : [createIssue('params', ['id'], 'INVALID_FORMAT')]),
+        ...(query.ok ? [] : query.issues), ...(body.ok ? [] : body.issues),
+      ];
+      if (issues.length > 0) return validationErrorResponse(issues);
+      if (!id.success || !body.ok) return errorResponse('INTERNAL_ERROR', 500);
+      const patient = db.users.find((user) => user.id === id.data && user.role === 'PATIENT');
+      if (!patient) return notFoundResponse();
+      if (body.data.email !== undefined && db.users.some((user) => user.id !== patient.id && user.email === body.data.email)) return errorResponse('EMAIL_TAKEN', 409);
+      const output = PatientSchema.safeParse({ id: patient.id, name: body.data.name ?? patient.name, email: body.data.email ?? patient.email });
+      if (!output.success) return errorResponse('INTERNAL_ERROR', 500);
+      patient.name = output.data.name;
+      patient.email = output.data.email;
+      db.persist();
+      return jsonResponse(output.data);
     }),
 
     // 5. GET /api/exam-types

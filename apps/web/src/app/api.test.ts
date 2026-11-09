@@ -21,7 +21,7 @@ const unauthorized = {
   error: { code: 'UNAUTHORIZED', message: 'Autenticação necessária ou credenciais inválidas.' },
 };
 afterEach(() => {
-  for (const store of stores.splice(0)) store.dispatch(resetSession());
+  for (const store of stores.splice(0)) { store.dispatch(resetSession()); store.dispose(); }
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -43,6 +43,8 @@ describe('transporte validado /api', () => {
     ['login', (store: AppStore) => store.dispatch(api.endpoints.login.initiate({ email: 'equipe@drlaudo.test', password: 'Demo@1234' })).unwrap()],
     ['getMe', (store: AppStore) => store.dispatch(api.endpoints.getMe.initiate()).unwrap()],
     ['getPatients', (store: AppStore) => store.dispatch(api.endpoints.getPatients.initiate()).unwrap()],
+    ['createPatient', (store: AppStore) => store.dispatch(api.endpoints.createPatient.initiate({ name: 'Nova Paciente', email: 'nova@drlaudo.test', password: 'Senha@123' })).unwrap()],
+    ['updatePatient', (store: AppStore) => store.dispatch(api.endpoints.updatePatient.initiate({ id: appointment.patient.id, name: 'Nome revisado' })).unwrap()],
     ['getExamTypes', (store: AppStore) => store.dispatch(api.endpoints.getExamTypes.initiate()).unwrap()],
     ['getSlots', (store: AppStore) => store.dispatch(api.endpoints.getSlots.initiate({ date: '2026-11-10' })).unwrap()],
     ['getAppointments', (store: AppStore) => store.dispatch(api.endpoints.getAppointments.initiate({})).unwrap()],
@@ -159,12 +161,30 @@ describe('transporte validado /api', () => {
     await vi.waitFor(() => expect(calls).toHaveLength(7));
     for (const subscription of subscriptions) subscription.unsubscribe();
   });
-  it.each(['onFocus', 'onOnline'] as const)('refaz leitura assinada ao receber %s', async (action) => {
-    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(respond(patientReport));
+  it('cada store escuta eventos DOM e pode liberar listeners sem afetar outro store vivo', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => respond(patientReport));
+    const first = staffStore();
+    const second = staffStore();
+    const subscriptions = [first, second].map((store) => store.dispatch(api.endpoints.getMyReport.initiate(appointment.id)));
+    await Promise.all(subscriptions.map((subscription) => subscription.unwrap()));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    window.dispatchEvent(new Event('focus'));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(api.endpoints.getMyReport.select(appointment.id)(second.getState()).status).toBe('fulfilled'));
+    expect('dispose' in first && typeof first.dispose === 'function').toBe(true);
+    if ('dispose' in first && typeof first.dispose === 'function') first.dispose();
+    window.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(5));
+    expect(api.endpoints.getMyReport.select(appointment.id)(first.getState()).data).toBeUndefined();
+    expect(api.endpoints.getMyReport.select(appointment.id)(second.getState()).data).toEqual(patientReport);
+    for (const subscription of subscriptions) subscription.unsubscribe();
+  });
+  it.each(['focus', 'online'] as const)('refaz leitura assinada ao receber evento DOM %s', async (event) => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => respond(patientReport));
     const store = staffStore();
     const subscription = store.dispatch(api.endpoints.getMyReport.initiate(appointment.id));
     await subscription.unwrap();
-    store.dispatch(api.internalActions[action]());
+    window.dispatchEvent(new Event(event));
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     subscription.unsubscribe();
   });

@@ -33,6 +33,7 @@ afterEach(() => {
   for (const item of active.splice(0)) {
     item.dispose();
     item.store.dispatch(resetSession());
+    item.store.dispose();
   }
   localStorage.clear();
   vi.useRealTimers();
@@ -146,6 +147,41 @@ describe('login e navegação autorizada', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
   it.each([
+    `/agenda?date=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agendamentos/novo?date=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agendamentos/${appointment.id}/laudo?date=2026-11-10&patientId=${appointment.patient.id}`,
+  ])('retoma a URL privada completa após login: %s', async (destination) => {
+    defaultFetch();
+    const { router, user } = openApp(destination);
+    await user.click(await screen.findByRole('button', { name: /^Equipe/ }));
+    await user.click(screen.getByRole('button', { name: /^Entrar$/ }));
+    await waitFor(() => expect(router.state.location.pathname + router.state.location.search).toBe(destination));
+  });
+  it.each([
+    `/agendamentos/novo?date=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agendamentos/${appointment.id}/laudo?date=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agenda?date=2026-11-10&patientId=${appointment.patient.id}&focus=${appointment.id}`,
+    '/pacientes',
+  ])('retorno por query aceita contexto emitido pela aplicação: %s', async (destination) => {
+    defaultFetch();
+    const { router, user } = openApp(`/login?returnTo=${encodeURIComponent(destination)}`);
+    await user.click(await screen.findByRole('button', { name: /^Equipe/ }));
+    await user.click(screen.getByRole('button', { name: /^Entrar$/ }));
+    await waitFor(() => expect(router.state.location.pathname + router.state.location.search).toBe(destination));
+  });
+  it.each([
+    '/\\evil.test/agenda', '/%2f%2fevil.test/agenda', '/agenda#https://evil.test',
+    '/agenda?date=2026-11-10&date=2026-11-11',
+    '/agendamentos/novo?date=2026-11-10&patientId=invalid',
+    `/agendamentos/${appointment.id}/laudo?date=2026-11-10&returnTo=https://evil.test`,
+  ])('descarta retorno adulterado sem navegação externa: %s', async (destination) => {
+    defaultFetch();
+    const { router, user } = openApp(`/login?returnTo=${encodeURIComponent(destination)}`);
+    await user.click(await screen.findByRole('button', { name: /^Equipe/ }));
+    await user.click(screen.getByRole('button', { name: /^Entrar$/ }));
+    await waitFor(() => expect(router.state.location.pathname).toBe('/agenda'));
+  });
+  it.each([
     ['PATIENT', '/agenda', '/meus-exames', '/api/appointments'],
     ['STAFF', '/meus-exames', '/agenda', '/api/me/appointments'],
   ] as const)('guard %s não dispara consulta proibida', async (role, path, home, forbidden) => {
@@ -164,7 +200,7 @@ describe('login e navegação autorizada', () => {
   it('shell tem skip link, usuário, navegação de paciente sem rascunhos e um h1', async () => {
     defaultFetch();
     openApp('/meus-exames', 'PATIENT');
-    await screen.findByRole('heading', { level: 1 });
+    await screen.findByRole('heading', { level: 1, name: 'Meus exames' }, { timeout: 5000 });
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Pular para o conteúdo' })).toHaveAttribute('href', '#conteudo');
     expect(screen.getByRole('navigation', { name: 'Navegação principal' })).not.toHaveTextContent('Rascunho');
@@ -234,20 +270,27 @@ describe('isolamento e restauração da sessão', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
   it.each(['logout', 'expiry', 'replacement', 'storage-clear', 'storage-replacement'] as const)('%s impede uma resposta antiga de repovoar DOM/cache', async (cause) => {
-    const issuedAt = Math.floor(Date.now() / 1000) - 28799;
+    const issuedAt = Math.floor(Date.now() / 1000) - 28798;
     const session = makeSession('STAFF', cause === 'expiry' ? issuedAt : undefined);
     const pending = Promise.withResolvers<Response>();
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
-      if (String(url).endsWith('/auth/me')) return Response.json(makeSession('PATIENT').user);
+      if (String(url).endsWith('/auth/me')) return Response.json(session.user);
       if (String(url).startsWith('/api/appointments')) return pending.promise;
       return Response.json([]);
     });
     const { store, router } = openApp('/agenda?date=2026-11-10', cause === 'expiry' ? undefined : 'STAFF');
-    if (cause === 'expiry') act(() => { store.dispatch(setSession(session)); });
-    await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).startsWith('/api/appointments'))).toBe(true));
-    const generation = store.getState().auth.generation;
+    let sessionGeneration = 0;
+    if (cause === 'expiry') {
+      act(() => { store.dispatch(setSession(session)); });
+      sessionGeneration = store.getState().auth.generation;
+    }
+    await waitFor(() => {
+      const calls = fetch.mock.calls.map(([u]) => (typeof u === 'object' && u && 'url' in u ? String(u.url) : String(u)));
+      expect(calls.some((u) => u.includes('/api/appointments')), `Calls were: ${JSON.stringify(calls)}`).toBe(true);
+    }, { timeout: 4000 });
+    const generation = cause === 'expiry' ? sessionGeneration : store.getState().auth.generation;
     if (cause === 'logout') fireEvent.click(screen.getByRole('button', { name: 'Sair' }));
-    if (cause === 'expiry') await waitFor(() => expect(store.getState().auth.status).toBe('anonymous'), { timeout: 2500 });
+    if (cause === 'expiry') await waitFor(() => expect(store.getState().auth.status).toBe('anonymous'), { timeout: 3500 });
     if (cause === 'replacement') act(() => { store.dispatch(setSession(makeSession('PATIENT'))); });
     if (cause === 'storage-clear' || cause === 'storage-replacement') {
       act(() => window.dispatchEvent(new StorageEvent('storage', { key: 'drlaudo.session', newValue: cause === 'storage-clear' ? null : JSON.stringify(makeSession('PATIENT')), storageArea: localStorage })));

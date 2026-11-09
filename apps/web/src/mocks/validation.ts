@@ -1,10 +1,12 @@
 import type { ErrorCode, ValidationIssue, ValidationLocation, ValidationRule } from '@drlaudo/contract';
+import type { z } from 'zod';
 
 export const ERROR_MESSAGES: Record<Exclude<ErrorCode, 'VALIDATION_ERROR'>, string> = {
   UNAUTHORIZED: 'Autenticação necessária ou credenciais inválidas.',
   FORBIDDEN: 'Você não tem permissão para esta ação.',
   NOT_FOUND: 'Não encontramos este registro',
   SLOT_TAKEN: 'Este horário acabou de ser ocupado.',
+  EMAIL_TAKEN: 'Este e-mail já está cadastrado.',
   REPORT_EXISTS: 'Este agendamento já possui um laudo.',
   REPORT_LOCKED: 'Este laudo foi publicado e não pode ser alterado.',
   CANNOT_CANCEL: 'Este agendamento não pode ser cancelado.',
@@ -36,6 +38,52 @@ export function createIssue<Rule extends ValidationRule>(
   rule: Rule,
 ): ValidationIssue {
   return { location, path, rule, message: VALIDATION_MESSAGES[rule] } as ValidationIssue;
+}
+
+// Runtime schemas stay in contract; mocks only translate their diagnostics to HTTP.
+export async function parseBody<T>(request: Request, schema: z.ZodType<T>): Promise<
+  { ok: true; data: T } | { ok: false; issues: ValidationIssue[] }
+> {
+  const text = await request.clone().text();
+  if (!text.trim()) return { ok: false, issues: [createIssue('body', [], 'REQUIRED')] };
+  if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers.get('content-type') ?? '')) {
+    return { ok: false, issues: [createIssue('body', [], 'INVALID_FORMAT')] };
+  }
+  let raw: unknown;
+  try { raw = JSON.parse(text); }
+  catch { return { ok: false, issues: [createIssue('body', [], 'INVALID_JSON')] }; }
+  const parsed = schema.safeParse(raw);
+  if (parsed.success) return { ok: true, data: parsed.data };
+  const issues: ValidationIssue[] = [];
+  for (const issue of parsed.error.issues) {
+    const path = issue.path.map(String);
+    let rule: ValidationRule = 'INVALID_FORMAT';
+    switch (issue.code) {
+      case 'invalid_type': {
+        const key = path[0];
+        const missing = path.length === 1 && key !== undefined && raw !== null
+          && typeof raw === 'object' && !Array.isArray(raw) && !Object.hasOwn(raw, key);
+        rule = missing ? 'REQUIRED' : 'INVALID_TYPE';
+        break;
+      }
+      case 'too_small': rule = issue.origin === 'string' ? 'TOO_SHORT' : 'INVALID_TYPE'; break;
+      case 'too_big': rule = issue.origin === 'string' ? 'TOO_LONG' : 'INVALID_TYPE'; break;
+      case 'unrecognized_keys':
+        issues.push(...issue.keys.map((key) => createIssue('body', [key], 'UNKNOWN_FIELD')));
+        continue;
+      case 'custom': {
+        const candidate: unknown = issue.params?.rule;
+        if (typeof candidate === 'string' && Object.hasOwn(VALIDATION_MESSAGES, candidate)) rule = candidate as ValidationRule;
+        break;
+      }
+    }
+    issues.push(createIssue('body', path, rule));
+  }
+  const precedence: readonly ValidationRule[] = ['REQUIRED', 'INVALID_TYPE', 'TOO_SHORT', 'TOO_LONG', 'INVALID_FORMAT', 'EMPTY_PATCH', 'UNKNOWN_FIELD'];
+  const normalized = issues.sort((left, right) => precedence.indexOf(left.rule) - precedence.indexOf(right.rule))
+    .filter((issue, index, all) => !all.slice(0, index).some((previous) =>
+      previous.path.length === issue.path.length && previous.path.every((segment, segmentIndex) => segment === issue.path[segmentIndex])));
+  return { ok: false, issues: normalized };
 }
 
 function compareStringsByCodePoint(first: string, second: string): number {

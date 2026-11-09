@@ -27,6 +27,7 @@ const messages: Record<Exclude<ErrorCode, 'VALIDATION_ERROR'>, string> = {
   FORBIDDEN: 'Você não tem permissão para esta ação.',
   NOT_FOUND: 'Não encontramos este registro',
   SLOT_TAKEN: 'Este horário acabou de ser ocupado.',
+  EMAIL_TAKEN: 'Este e-mail já está cadastrado.',
   REPORT_EXISTS: 'Este agendamento já possui um laudo.',
   REPORT_LOCKED: 'Este laudo foi publicado e não pode ser alterado.',
   CANNOT_CANCEL: 'Este agendamento não pode ser cancelado.',
@@ -83,7 +84,7 @@ function appointmentInput(startsAt = '2026-11-11T16:00:00.000Z') {
   return { patientId: ids.ana, examTypeId: ids.xray, startsAt };
 }
 const staffRoutes = [
-  ['GET', '/patients'], ['GET', '/exam-types'], ['GET', '/slots?date=bad'],
+  ['GET', '/patients'], ['POST', '/patients'], ['PATCH', '/patients/bad'], ['GET', '/exam-types'], ['GET', '/slots?date=bad'],
   ['POST', '/appointments'], ['GET', '/appointments'], ['GET', '/appointments/bad'],
   ['POST', '/appointments/bad/cancel'], ['POST', '/appointments/bad/report'],
   ['GET', '/appointments/bad/report'], ['PATCH', '/reports/bad'], ['POST', '/reports/bad/publish'],
@@ -204,6 +205,79 @@ describe('T8 — identidade e fronteira HTTP simuladas', () => {
     expect(mockDb.appointments).toEqual(before);
     mockRuntime.reset();
     expect((await call('GET', '/health')).status).toBe(200);
+  });
+});
+
+describe('administração de pacientes simulada pelo contrato HTTP', () => {
+  const input = { name: '  Carla Lima  ', email: ' CARLA@FIXTURE.TEST ', password: ' Literal@123 ' };
+  it('cadastro Unicode mantém a identidade no token simulado e em auth/me', async () => {
+    const token = await staff();
+    const response = await call('POST', '/patients', { token, json: { name: 'Paciente 漢字 🩺', email: 'unicode@fixture.test', password: 'Senha@123' } });
+    expect(response.status).toBe(201);
+    const session = await login('unicode@fixture.test', 'Senha@123');
+    expect(session.user.name).toBe('Paciente 漢字 🩺');
+    expect(await json(await call('GET', '/auth/me', { token: session.token }))).toEqual(session.user);
+  });
+  it('cria somente PATIENT, normaliza cadastro, permite login e não expõe senha', async () => {
+    const token = await staff();
+    const response = await call('POST', '/patients', { token, json: input });
+    expect(response.status).toBe(201);
+    const created: unknown = await json(response);
+    expect(created).toEqual({ id: expect.any(String), name: 'Carla Lima', email: 'carla@fixture.test' });
+    const session = await login('carla@fixture.test', input.password);
+    expect(session.user).toMatchObject({ name: 'Carla Lima', email: 'carla@fixture.test', role: 'PATIENT' });
+    const list = await call('GET', '/patients', { token });
+    expect(await json(list)).toEqual([
+      { id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test' },
+      { id: ids.bruno, name: 'Bruno QA', email: 'bruno@fixture.test' },
+      created,
+    ]);
+    expect(await json(await call('GET', '/me/appointments', { token: session.token }))).toEqual([]);
+  });
+  it('edita somente nome/email e atualiza o nome em agendamento sem mudar credenciais ou ownership', async () => {
+    const token = await staff();
+    const response = await call('PATCH', `/patients/${ids.ana}`, { token, json: { name: 'Ana Revisada', email: ' NOVA@FIXTURE.TEST ' } });
+    expect(response.status).toBe(200);
+    expect(await json(response)).toEqual({ id: ids.ana, name: 'Ana Revisada', email: 'nova@fixture.test' });
+    const session = await login('nova@fixture.test');
+    expect(session.user).toMatchObject({ id: ids.ana, role: 'PATIENT' });
+    expect(await json(await call('GET', `/appointments/${ids.draftAppointment}`, { token }))).toMatchObject({ patient: { id: ids.ana, name: 'Ana Revisada' } });
+  });
+  it('conflito de email em criação/edição retorna 409 sem mutar usuários', async () => {
+    const token = await staff();
+    const before = structuredClone(mockDb.users);
+    for (const [method, path, body] of [
+      ['POST', '/patients', { ...input, email: ' ANA@FIXTURE.TEST ' }],
+      ['PATCH', `/patients/${ids.ana}`, { email: ' STAFF@FIXTURE.TEST ' }],
+    ] as const) {
+      const response = await call(method, path, { token, json: body });
+      expect(response.status).toBe(409);
+      expect(await json(response)).toEqual({ error: { code: 'EMAIL_TAKEN', message: 'Este e-mail já está cadastrado.' } });
+    }
+    expect(mockDb.users).toEqual(before);
+  });
+  it.each([ids.staff, '10000000-0000-4000-8000-000000000099'])('edição de alvo %s retorna o mesmo 404', async (id) => {
+    const response = await call('PATCH', `/patients/${id}`, { token: await staff(), json: { name: 'Outro Nome' } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe(NOT_FOUND);
+  });
+  it.each([
+    [{ ...input, name: ' a ' }, [issue('body', ['name'], 'TOO_SHORT')]],
+    [{ ...input, name: 'x'.repeat(121) }, [issue('body', ['name'], 'TOO_LONG')]],
+    [{ ...input, password: '1234567' }, [issue('body', ['password'], 'TOO_SHORT')]],
+    [{ ...input, password: 'é'.repeat(37) }, [issue('body', ['password'], 'TOO_LONG')]],
+    [{ ...input, role: 'STAFF' }, [issue('body', ['role'], 'UNKNOWN_FIELD')]],
+  ])('rejeita cadastro inválido sem gravar: %j', async (body, expected) => {
+    const token = await staff();
+    const before = structuredClone(mockDb.users);
+    await expectValidation(await call('POST', '/patients', { token, json: body }), expected);
+    expect(mockDb.users).toEqual(before);
+  });
+  it('aplica parser HTTP estrito e agrega query/body antes de procurar alvo', async () => {
+    const token = await staff();
+    await expectValidation(await call('POST', '/patients?x=1', { token, raw: '{', headers: { 'Content-Type': 'application/json' } }), [issue('query', ['x'], 'UNKNOWN_FIELD'), issue('body', [], 'INVALID_JSON')]);
+    await expectValidation(await call('PATCH', `/patients/${ids.ana}`, { token, json: {} }), [issue('body', [], 'EMPTY_PATCH')]);
+    await expectValidation(await call('PATCH', `/patients/${ids.ana}`, { token, json: { password: 'Senha@123' } }), [issue('body', [], 'EMPTY_PATCH'), issue('body', ['password'], 'UNKNOWN_FIELD')]);
   });
 });
 

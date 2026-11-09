@@ -5,6 +5,7 @@ const messages = {
   FORBIDDEN: 'Você não tem permissão para esta ação.',
   NOT_FOUND: 'Não encontramos este registro',
   SLOT_TAKEN: 'Este horário acabou de ser ocupado. Escolha outro.',
+  EMAIL_TAKEN: 'Este e-mail já está cadastrado.',
   PAST_DATE: 'Não é possível agendar em um horário que já passou.',
   INVALID_SLOT: 'Escolha um horário entre 07:00 e 18:30, de 30 em 30 minutos.',
   REPORT_EXISTS: 'Este agendamento já possui um laudo.',
