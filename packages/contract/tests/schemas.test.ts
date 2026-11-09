@@ -132,7 +132,7 @@ const examId = '33333333-3333-4333-8333-333333333333';
 const reportId = '44444444-4444-4444-8444-444444444444';
 const appointmentId = '55555555-5555-4555-8555-555555555555';
 const timestamp = '2026-11-10T12:00:00.000Z';
-const patient = { id, name: 'Ana Souza', email: 'ana@drlaudo.test' };
+const patient = { id, name: 'Ana Souza', email: 'ana@drlaudo.test', active: true };
 const patientSummary = { id, name: 'Ana Souza' };
 const exam = { id: examId, code: 'XRAY', name: 'Raio-X de tórax' };
 const examSummary = { id: examId, name: 'Raio-X de tórax' };
@@ -279,6 +279,7 @@ describe('E1 E2 RF-03 RN-24: catálogos mínimos reutilizáveis', () => {
     expect(PatientSchema.parse({ ...patient, id: id.toUpperCase(), name: ' Ana  Souza ', email: ' ANA@DRLAUDO.TEST ' }))
       .toEqual({ ...patient, name: ' Ana  Souza ' });
     expect(PatientSummarySchema.parse(patientSummary)).toEqual(patientSummary);
+    expect(PatientSchema.parse({ ...patient, active: false })).toEqual({ ...patient, active: false });
   });
   it.each(['XRAY', 'ULTRASOUND', 'MRI'])('aceita código fechado %s no catálogo', (code) => {
     expect(ExamTypeSchema.parse({ ...exam, code })).toEqual({ ...exam, code });
@@ -299,6 +300,7 @@ describe('E1 E2 RF-03 RN-24: catálogos mínimos reutilizáveis', () => {
   it.each([
     { ...patient, role: 'PATIENT' }, { ...patient, passwordHash: 'private' },
     { ...patient, name: '' }, { ...patient, name: 1 }, { ...patient, email: null },
+    { ...patient, active: null }, { ...patient, active: 'true' }, { ...patient, active: undefined },
     { id, name: patient.name }, { ...patient, id: 'invalid' }, null, [],
   ])('rejeita DTO paciente incompleto ou com dados não permitidos: %j', (value) => {
     expect(PatientSchema.safeParse(value).success).toBe(false);
@@ -505,7 +507,7 @@ describe('E1 E2 RF-08 RN-22 RN-23 RN-24: contrato próprio do paciente não ampl
 
 describe('E1 E2: propriedades requeridas e objetos strict em todos os DTOs novos', () => {
   const objects = [
-    { name: 'Patient', schema: PatientSchema, value: patient, fields: ['id', 'name', 'email'] },
+    { name: 'Patient', schema: PatientSchema, value: patient, fields: ['id', 'name', 'email', 'active'] },
     { name: 'PatientSummary', schema: PatientSummarySchema, value: patientSummary, fields: ['id', 'name'] },
     { name: 'ExamType', schema: ExamTypeSchema, value: exam, fields: ['id', 'code', 'name'] },
     { name: 'ExamTypeSummary', schema: ExamTypeSummarySchema, value: examSummary, fields: ['id', 'name'] },

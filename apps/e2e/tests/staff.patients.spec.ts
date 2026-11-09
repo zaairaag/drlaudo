@@ -39,7 +39,7 @@ test('STAFF · cadastrar/editar paciente permite login real e preserva ownership
   const edited = await edition;
   expect(edited.status()).toBe(200);
   const updatedBody: unknown = await edited.json();
-  expect(PatientSchema.parse(updatedBody)).toEqual({ id: patient.id, name: 'Paciente editado QA', email: editedEmail });
+  expect(PatientSchema.parse(updatedBody)).toEqual({ id: patient.id, name: 'Paciente editado QA', email: editedEmail, active: true });
   await expect(editionDialog).toHaveCount(0);
   await expect(row.getByText(editedEmail, { exact: true })).toBeVisible();
   await page.reload();
@@ -84,6 +84,56 @@ test('STAFF · cadastrar/editar paciente permite login real e preserva ownership
     } finally {
       await api.dispose();
     }
+  } finally {
+    await context.close();
+  }
+});
+
+test('STAFF · desativar preserva histórico e reativar restaura o acesso do paciente', async ({ browser, staff, scenario }) => {
+  const email = `atividade-${randomUUID()}@qa.test`;
+  const password = 'PacienteQA@12345';
+  const patient = await responseData(await staff.api.request.post('/patients', {
+    data: { name: 'Paciente atividade QA', email, password },
+  }), 201, PatientSchema);
+  const appointment = await staff.api.createAppointment(patient.id, QA.xray.id, slotAt(scenario.date, 9));
+  const draft = await staff.api.createReport(appointment.id, {
+    title: 'Histórico preservado QA', body: 'Texto fictício mantido após desativar paciente.', professionalName: 'Dra. QA',
+  });
+  const context = await browser.newContext({ baseURL: WEB_URL, storageState: { cookies: [], origins: [] } });
+  try {
+    const portal = await context.newPage();
+    await portal.goto('/login');
+    await signIn(portal, email, password);
+    await expect(portal.getByRole('heading', { name: 'Meus exames', exact: true })).toBeVisible();
+    const page = staff.page;
+    await page.goto('/pacientes');
+    const row = page.locator(`[data-patient-id="${patient.id}"]:visible`);
+    await row.getByRole('button', { name: 'Desativar paciente', exact: true }).click();
+    let dialog = page.getByRole('alertdialog');
+    await dialog.getByRole('button', { name: 'Voltar', exact: true }).click();
+    await expect(row.getByRole('button', { name: 'Desativar paciente', exact: true })).toBeVisible();
+    await row.getByRole('button', { name: 'Desativar paciente', exact: true }).click();
+    dialog = page.getByRole('alertdialog');
+    const deactivated = apiResponse(page, 'PATCH', `/patients/${patient.id}`);
+    await dialog.getByRole('button', { name: 'Desativar paciente', exact: true }).click();
+    expect((await deactivated).status()).toBe(200);
+    await expect(row.getByText('Inativo', { exact: true })).toBeVisible();
+    await portal.reload();
+    await expect(portal).toHaveURL(/\/login(?:\?|$)/);
+    expect(await staff.api.report(appointment.id)).toEqual(draft);
+    expect((await staff.api.appointment(appointment.id)).status).toBe('SCHEDULED');
+    await page.goto(`/agendamentos/novo?date=${scenario.date}`);
+    await expect(page.getByLabel('Paciente', { exact: true }).locator(`option[value="${patient.id}"]`)).toHaveCount(0);
+    await page.goto('/pacientes');
+    await row.getByRole('button', { name: 'Reativar paciente', exact: true }).click();
+    const reactivated = apiResponse(page, 'PATCH', `/patients/${patient.id}`);
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Reativar paciente', exact: true }).click();
+    expect((await reactivated).status()).toBe(200);
+    await expect(row.getByText('Ativo', { exact: true })).toBeVisible();
+    await portal.goto('/login');
+    await signIn(portal, email, password);
+    await expect(portal.getByRole('article')).toHaveCount(1);
+    expect(await staff.api.report(appointment.id)).toEqual(draft);
   } finally {
     await context.close();
   }

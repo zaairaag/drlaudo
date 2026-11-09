@@ -242,3 +242,51 @@ Contrato `scope=all` foi acrescentado sem alterar a janela padrão da API. Prova
 Na interface real de produção local, Chromium mostrou botão, título do modo completo, filtro Ana e data/hora por registro em desktop1440px e telas375/720px; document.scrollWidth igual ao viewport nas duas telas pequenas e console sem erros. Esta observação não concede homologação com leitor de tela nativo/celular físico nem aprovação humana de produto. E2E, CI e implantação desta revisão são registrados após conclusão.
 
 E2E real completo:39/39 passou, um worker/zero retries, incluindo consulta completa com exame90dias distante cancelado, filtro Ana/Bruno, F5, retorno do laudo e Hoje; os cinco cenários anteriores permaneceram verdes. Total desta revisão:1.408 casos (531 contrato +339 API +499 web +39 E2E), executados por camada, sem misturar QA com a demo.
+
+### Linha do tempo e atividade administrativa — validação local
+
+Novo aceite: agrupar histórico STAFF por mês/paciente, identificar dia passado/hoje/futuro sem afirmar presença, preservar cancelamento/publicação e facilitar edição de paciente/rascunho. Ciclo ativo→inativo→ativo exige confirmação, bloqueia login/JWT posterior/novas reservas, preserva dados históricos e senha e não amplia acesso PATIENT.
+
+Provas exigidas nesta revisão: contrato strict active; integração PostgreSQL real de preservação/revogação/reativação e corrida reserva×desativação com trava User; migração aditiva sobre dados anteriores; MSW paridade; componentes/reflow/teclado; E2E do ciclo e da linha do tempo. Casos novos observaram RED por PATCH400 em vez200, ausência de trava/coluna e ações/DTO ainda não implementados. A usuária pediu ambiente local para aprovação: nenhuma publicação GitHub nem migração da VPS está autorizada nesta etapa.
+
+Provas já executadas: contrato **545/545** e API **351/351**, com PostgreSQL16 real no projeto QA isolado. A prova transacional de migração aplicou o SQL inicial sobre usuário/agendamento/rascunho sintéticos anteriores, executou a nova migração e confirmou `active=true`, campos antigos/senha e vínculos intactos; encerrou com rollback. Não tocou os bancos da demo local anterior nem da VPS. O driver pg continua emitindo aviso de consulta concorrente no cliente, sem supressão.
+
+Preview de aprovação separado: `http://localhost:8091`, projeto Compose `drlaudo-timeline-preview`, com API/PostgreSQL reais e volume próprio. Foram acrescentados quatro agendamentos fictícios apenas nessa base local, em meses anterior/atual/seguinte, para visualizar datas passadas/hoje/próximas e cancelamento. Chromium confirmou linha do tempo de Ana, edição contextual, confirmação pelo teclado e desativação→reativação de Bruno; ambos ficaram ativos ao final. Reflow observado em375/720px sem scroll horizontal, console sem erros. Smoke do proxy local passou **3/3**. Isso não concede Gate A humano nem prova celular físico/leitor de tela nativo.
+
+Gates concluídos nesta árvore local: lint e typecheck aprovados; arquitetura sem violações (248módulos/898dependências); build aprovado com aviso de chunk>500kB. Web:525 casos passaram na execução completa e uma asserção de refetch falhou por observar o DOM antes da notificação agrupada; a mesma condição passou após usar waitFor no arquivo completo **8/8**. Não houve nova execução integral web após esse ajuste exclusivamente de sincronização do teste. E2E real completo **40/40**, um worker/zero retries, incluindo ciclo administrativo, meses da linha do tempo, retorno contextual, imutabilidade publicada e isolamento do paciente. PRD strict:0erros/0avisos.
+
+### Calendário mensal — alternativa local à linha do tempo
+
+Pedido adicional mantém linha do tempo e acrescenta grade mensal STAFF. RED de integração:6falhas por controle ausente, contexto de retorno rejeitado e calendário inválido não bloqueado. Critérios: meses/dias civis da clínica, contagem total/cancelados, paciente e URL preservados, dia vazio sem sumir grade, teclado, retorno do laudo e reflow375/720px. Consulta HTTP permanece scope=all/patientId, sem parâmetros visuais. Execuções e observação da nova superfície são registradas abaixo após conclusão; sem publicação.
+
+Retorno seguro e laudos: **91/91** passaram nos dois arquivos pertinentes, incluindo contextos de calendário válidos, adulterados e limites de acesso por perfil. Nenhum parâmetro visual foi acrescentado ao contrato HTTP.
+
+Componente mensal **21/21** e agenda **53/53** passaram; lint/typecheck/build/check:arch aprovados (250módulos/917dependências). E2E pertinente de agendamento/acessibilidade **17/17** passou com PostgreSQL real e zero retries. Navegador confirmou grade sete colunas, total/cancelado e seleção mensal/paciente; axe na superfície de calendário não encontrou violações nas tags WCAG2A/2AA/2.1AA. Esses resultados não equivalem a medição WebAIM, leitor de tela nativo ou aprovação humana.
+
+A observação em375px identificou cabeçalhos semanais longos colidindo e foco de rota voltando ao h1 a cada seleção de data. Cabeçalhos abreviados Dom…Sáb resolveram a colisão, mantendo labels completos; RouteFocus passou a reagir à mudança de pathname/sessão, não a cada query de filtro. Seleção do calendário preserva rolagem e a regressão E2E exige manter foco no dia após setas+Enter. A verificação final desta correção é registrada após conclusão.
+
+No preview reconstruído, a seleção por setas+Enter manteve foco em “Terça-feira,3 de novembro de2026…” e scrollY1107 antes/depois; dia vazio exibiu mensagem sem ocultar a grade. Capturas finais375/720px confirmaram cabeçalhos abreviados legíveis e scrollWidth igual ao viewport.
+
+Fechamento: lint direcionado e build novamente aprovados após correção do foco; E2E de agenda/acessibilidade **17/17** novamente passou, agora incluindo a regressão setas+Enter e foco no dia selecionado. Preview8091 atualizado somente no serviço web, sem reiniciar API/banco nem alterar a VPS. Suítes API/contrato e web integral não foram repetidas por esta mudança exclusiva de UI.
+
+### Refinamento integrado do fluxo da equipe
+
+Avaliações independentes de design e evidência Chromium observaram mistura de modos/comandos, rolagem até os exames, foco sem indicador visual no calendário, ausência de paciente na leitura publicada STAFF e retorno da criação perdendo modo de origem. Revisão somente leitura: sem mutações de negócio. Detector Impeccable indisponível (exit127); nenhum resultado automatizado presumido.
+
+Aceite aprovado em formulário: calendário inicial, modos explícitos, paciente compacto, detalhes diários próximos, acesso prioritário aos exames, identidade STAFF sempre presente e retorno seguro de criação. Preservar slots/transações/ownership/portal/publicação imutável. Provas: regressões de comportamento antes da implementação, web e gates pertinentes, E2E real e rodada visual desktop/mobile/teclado. Resultados da revisão anterior não são prova desta reorganização.
+
+Provas de componente/contrato visual: duas execuções web completas observaram613/615 e612/615, respectivamente. Corrigida fixture404 com mensagem canônica e removida asserção incidental de um atalho duplicado; arquivos afetados passaram93/93 (laudos/pacientes) e61/61 (agenda). Não se apresenta uma terceira execução integral inexistente. Lint, typecheck dos workspaces, arquitetura (250módulos/918dependências) e build passaram após os ajustes; permanece aviso de chunk>500kB.
+
+Confirmação real da composição final: em1440px, grade de352px com primeiro exame filtrado emY482, ao lado do calendário. Em375px, primeiro exame diário sem filtro emY622, contraY913 na avaliação anterior; botões do calendário47×64px. Atalho de detalhes deixou título focado emY167,5, abaixo do cabeçalho fixo de111px; sem deslocamento automático nas setas. Em720px, foco visível confirmado por ring/box-shadow e captura. `scrollWidth` igual ao viewport375/720/1440, console sem erros; axe na grade/dia vazio sem violações das tags verificadas. Não é aprovação humana, medição WebAIM, leitor nativo ou celular físico.
+
+Navegação global no celular abriu novo agendamento com paciente/exame vazios, data da origem e `returnTo` seguro. Após mudar a data e voltar sem criar, restaurou calendário, Ana e10/11; link de retorno permaneceu abaixo da navegação fixa. Leitura publicada STAFF manteve nome do paciente, exame e horário. Apenas serviço web8091 reconstruído; API/banco/dados da demo e VPS preservados.
+
+Fechamento E2E: execução completa teve40/41 aprovados; a asserção de Tóquio ficou ambígua porque a data passou a existir tanto na identificação STAFF quanto no corpo do laudo. Restrito o seletor à identificação e ao instante correto, o projeto Tóquio passou4/4 (três setups e o cenário de fuso), sem mudar produto/timeout/retries. Não foi feita outra execução integral E2E depois desse ajuste somente de seletor. Smoke da stack final8091 passou3/3 com autenticação/leitura real dos dois perfis. Métricas de composição acima são observações pontuais, não benchmark controlado de usabilidade.
+
+### Validação integral para publicação do fluxo da equipe
+
+Em2026-11-09, a árvore final passou em uma nova execução integral: **545/545 contrato, 351/351 API com PostgreSQL real, 615/615 web e 41/41 E2E**, total **1.552**. Lint, typecheck, arquitetura (250módulos/918dependências) e build passaram na mesma sequência. Permanecem os avisos de depreciação de consultas concorrentes do driverpg e chunk web>500kB; nenhum foi suprimido.
+
+A sequência terminou com erro de uso do comando `check:delivery`, chamado sem o obrigatório `--base-url`; isso ocorreu depois dos testes/gates acima. A prova HTTP/proxy é executada separadamente contra uma stack QA isolada, não contra a demo pública.
+
+Prova HTTP concluída em `drlaudo-release-http-qa`, loopback18080: **3/3 grupos aprovados**, incluindo uploads finitos/streaming bloqueados, headers/cache/fallback/redirect e impossibilidade de burlar quota de login com headers de IP. Imagens API/web e stack saudáveis. PRD strict: **0erros/0avisos**. Essa prova não modifica dados de negócio da demo nem usa sua quota.

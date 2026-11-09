@@ -223,13 +223,13 @@ describe('administração de pacientes simulada pelo contrato HTTP', () => {
     const response = await call('POST', '/patients', { token, json: input });
     expect(response.status).toBe(201);
     const created: unknown = await json(response);
-    expect(created).toEqual({ id: expect.any(String), name: 'Carla Lima', email: 'carla@fixture.test' });
+    expect(created).toEqual({ id: expect.any(String), name: 'Carla Lima', email: 'carla@fixture.test', active: true });
     const session = await login('carla@fixture.test', input.password);
     expect(session.user).toMatchObject({ name: 'Carla Lima', email: 'carla@fixture.test', role: 'PATIENT' });
     const list = await call('GET', '/patients', { token });
     expect(await json(list)).toEqual([
-      { id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test' },
-      { id: ids.bruno, name: 'Bruno QA', email: 'bruno@fixture.test' },
+      { id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test', active: true },
+      { id: ids.bruno, name: 'Bruno QA', email: 'bruno@fixture.test', active: true },
       created,
     ]);
     expect(await json(await call('GET', '/me/appointments', { token: session.token }))).toEqual([]);
@@ -238,7 +238,7 @@ describe('administração de pacientes simulada pelo contrato HTTP', () => {
     const token = await staff();
     const response = await call('PATCH', `/patients/${ids.ana}`, { token, json: { name: 'Ana Revisada', email: ' NOVA@FIXTURE.TEST ' } });
     expect(response.status).toBe(200);
-    expect(await json(response)).toEqual({ id: ids.ana, name: 'Ana Revisada', email: 'nova@fixture.test' });
+    expect(await json(response)).toEqual({ id: ids.ana, name: 'Ana Revisada', email: 'nova@fixture.test', active: true });
     const session = await login('nova@fixture.test');
     expect(session.user).toMatchObject({ id: ids.ana, role: 'PATIENT' });
     expect(await json(await call('GET', `/appointments/${ids.draftAppointment}`, { token }))).toMatchObject({ patient: { id: ids.ana, name: 'Ana Revisada' } });
@@ -267,6 +267,8 @@ describe('administração de pacientes simulada pelo contrato HTTP', () => {
     [{ ...input, password: '1234567' }, [issue('body', ['password'], 'TOO_SHORT')]],
     [{ ...input, password: 'é'.repeat(37) }, [issue('body', ['password'], 'TOO_LONG')]],
     [{ ...input, role: 'STAFF' }, [issue('body', ['role'], 'UNKNOWN_FIELD')]],
+    [{ ...input, active: false }, [issue('body', ['active'], 'UNKNOWN_FIELD')]],
+    [{ ...input, active: true }, [issue('body', ['active'], 'UNKNOWN_FIELD')]],
   ])('rejeita cadastro inválido sem gravar: %j', async (body, expected) => {
     const token = await staff();
     const before = structuredClone(mockDb.users);
@@ -279,6 +281,60 @@ describe('administração de pacientes simulada pelo contrato HTTP', () => {
     await expectValidation(await call('PATCH', `/patients/${ids.ana}`, { token, json: {} }), [issue('body', [], 'EMPTY_PATCH')]);
     await expectValidation(await call('PATCH', `/patients/${ids.ana}`, { token, json: { password: 'Senha@123' } }), [issue('body', [], 'EMPTY_PATCH'), issue('body', ['password'], 'UNKNOWN_FIELD')]);
   });
+  it.each([null, 'false', 0])('rejeita active inválido no PATCH sem mutação: %j', async (active) => {
+    const before = structuredClone(mockDb.users);
+    await expectValidation(await call('PATCH', `/patients/${ids.ana}`, { token: await staff(), json: { active } }), [issue('body', ['active'], 'INVALID_TYPE')]);
+    expect(mockDb.users).toEqual(before);
+  });
+
+  it('desativa/reativa preservando credenciais, exames, publicação e edição de rascunho', async () => {
+    const token = await staff();
+    const patientToken = await ana();
+    const patient = structuredClone(mockDb.users.find((entry) => entry.id === ids.ana));
+    if (!patient) throw new Error('Missing arranged patient');
+    const appointments = structuredClone(mockDb.appointments);
+    const reports = structuredClone(mockDb.reports);
+    const deactivated = await call('PATCH', `/patients/${ids.ana}`, { token, json: { active: false } });
+    expect(deactivated.status).toBe(200);
+    expect(await json(deactivated)).toEqual({ id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test', active: false });
+    expect(mockDb.users.find((entry) => entry.id === ids.ana)).toEqual({ ...patient, active: false });
+    expect(mockDb.appointments).toEqual(appointments);
+    expect(mockDb.reports).toEqual(reports);
+    expect(await json(await call('GET', '/patients', { token }))).toContainEqual({ id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test', active: false });
+    await expectError(await call('POST', '/auth/login', { json: { email: patient.email, password: patient.password } }), 401, 'UNAUTHORIZED');
+    for (const path of ['/auth/me', '/me/appointments', `/me/appointments/${ids.publishedAppointment}/report`, '/patients']) {
+      await expectError(await call('GET', path, { token: patientToken }), 401, 'UNAUTHORIZED');
+    }
+    await expectError(await call('PATCH', `/patients/${ids.bruno}`, { token: patientToken, raw: '{', headers: { 'Content-Type': 'application/json' } }), 401, 'UNAUTHORIZED');
+    for (const startsAt of ['2026-11-11T16:00:00.000Z', '2026-11-11T16:05:00.000Z', '2026-11-09T16:00:00.000Z']) {
+      await expectError(await call('POST', '/appointments', { token, json: appointmentInput(startsAt) }), 404, 'NOT_FOUND');
+    }
+    expect(mockDb.appointments).toEqual(appointments);
+    const staffHistory = await call('GET', `/appointments?scope=all&patientId=${ids.ana}`, { token });
+    expect(staffHistory.status).toBe(200);
+    expect(await json(staffHistory)).toHaveLength(3);
+    expect((await call('PATCH', `/reports/${ids.draftReport}`, { token, json: { title: 'Rascunho do inativo' } })).status).toBe(200);
+    await expectError(await call('PATCH', `/reports/${ids.publishedReport}`, { token, json: { title: 'Não pode mudar' } }), 409, 'REPORT_LOCKED');
+    const editedReports = structuredClone(mockDb.reports);
+    const reactivated = await call('PATCH', `/patients/${ids.ana}`, { token, json: { active: true } });
+    expect(reactivated.status).toBe(200);
+    expect(await json(reactivated)).toEqual({ id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test', active: true });
+    expect(mockDb.users.find((entry) => entry.id === ids.ana)).toEqual(patient);
+    expect(mockDb.appointments).toEqual(appointments);
+    expect(mockDb.reports).toEqual(editedReports);
+    const restored = await login(patient.email, patient.password);
+    expect((await call('GET', '/auth/me', { token: restored.token })).status).toBe(200);
+    const own = MyAppointmentListResponseSchema.parse(await json(await call('GET', '/me/appointments', { token: restored.token })));
+    expect(own.map(({ id }) => id)).toEqual([ids.publishedAppointment, ids.draftAppointment, ids.plainAppointment]);
+    expect((await call('GET', `/me/appointments/${ids.publishedAppointment}/report`, { token: restored.token })).status).toBe(200);
+    expect((await call('POST', '/appointments', { token, json: appointmentInput() })).status).toBe(201);
+  });
+
+  it.each([ids.ana, ids.bruno])('PATIENT não pode desativar alvo %s', async (id) => {
+    const before = structuredClone(mockDb.users);
+    await expectError(await call('PATCH', `/patients/${id}`, { token: await ana(), json: { active: false } }), 403, 'FORBIDDEN');
+    expect(mockDb.users).toEqual(before);
+  });
 });
 
 describe('T9 — catálogos e fotografia da grade', () => {
@@ -286,8 +342,8 @@ describe('T9 — catálogos e fotografia da grade', () => {
     const response = await call('GET', '/patients', { token: await staff() });
     expect(response.status).toBe(200);
     expect(await json(response)).toEqual([
-      { id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test' },
-      { id: ids.bruno, name: 'Bruno QA', email: 'bruno@fixture.test' },
+      { id: ids.ana, name: 'Ana QA', email: 'ana@fixture.test', active: true },
+      { id: ids.bruno, name: 'Bruno QA', email: 'bruno@fixture.test', active: true },
     ]);
   });
   it('sorts Unicode by code points, not UTF-16 or the process locale', async () => {
@@ -298,8 +354,8 @@ describe('T9 — catálogos e fotografia da grade', () => {
     brunoUser.name = '\uE000';
     const response = await call('GET', '/patients', { token: await staff() });
     expect(await json(response)).toEqual([
-      { id: ids.bruno, name: '\uE000', email: 'bruno@fixture.test' },
-      { id: ids.ana, name: '\u{10000}', email: 'ana@fixture.test' },
+      { id: ids.bruno, name: '\uE000', email: 'bruno@fixture.test', active: true },
+      { id: ids.ana, name: '\u{10000}', email: 'ana@fixture.test', active: true },
     ]);
   });
   it('returns exactly the three exam DTOs in binary name order', async () => {

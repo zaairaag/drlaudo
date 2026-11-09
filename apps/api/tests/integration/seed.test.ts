@@ -67,8 +67,8 @@ describe('Seed real em QA · reexecução, preservação e rollback', () => {
     const patients = await app.inject({ method: 'GET', url: '/patients', headers: auth(token) });
     expect(patients.statusCode).toBe(200);
     expect(patients.json()).toEqual([
-      { id: DEMO.ana, name: 'Ana Souza', email: 'ana.souza@drlaudo.test' },
-      { id: DEMO.bruno, name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test' },
+      { id: DEMO.ana, name: 'Ana Souza', email: 'ana.souza@drlaudo.test', active: true },
+      { id: DEMO.bruno, name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test', active: true },
     ]);
     await seedDemo({ prisma: db, clock: fixedClock('2027-02-10T12:00:00.000Z') });
     expect(await snapshot()).toEqual(before);
@@ -102,6 +102,25 @@ describe('Seed real em QA · reexecução, preservação e rollback', () => {
     });
     expect(loginChanged.statusCode).toBe(200);
     expect(loginChanged.json().user).toMatchObject({ id: DEMO.ana, name: 'Ana Nome Atualizado', role: 'PATIENT' });
+  });
+
+  it('reexecutar seed preserva paciente inativo sem resetar senha nem histórico', async () => {
+    await truncateAll();
+    const db = testPrisma();
+    await seedDemo({ prisma: db, clock: fixedClock(QA.now) });
+    const app = await buildTestApp();
+    const token = await login(app, 'equipe@drlaudo.test', 'Demo@1234');
+    const deactivated = await app.inject({
+      method: 'PATCH', url: `/patients/${DEMO.ana}`, headers: auth(token), payload: { active: false },
+    });
+    expect(deactivated.statusCode).toBe(200);
+    const before = await snapshot();
+    await seedDemo({ prisma: db, clock: fixedClock('2027-02-10T12:00:00.000Z') });
+    expect(await snapshot()).toEqual(before);
+    const denied = await app.inject({
+      method: 'POST', url: '/auth/login', payload: { email: 'ana.souza@drlaudo.test', password: 'Demo@1234' },
+    });
+    expect(denied.statusCode).toBe(401);
   });
 
   it('colisão no terceiro slot reverte usuários, exames e agendamentos anteriores e mantém o banco original', async () => {

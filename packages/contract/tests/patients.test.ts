@@ -14,6 +14,7 @@ describe('contrato de administração de pacientes', () => {
     { email: 'paciente' }, { email: null }, { password: '1234567' },
     { password: 'é'.repeat(37) }, { password: '😀'.repeat(19) },
     { role: 'STAFF' }, { passwordHash: 'hash' }, { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+    { active: false }, { active: true }, { active: undefined },
   ])('rejeita criação fora da capacidade administrativa: %j', (override) => {
     expect(CreatePatientRequestSchema.safeParse({ ...input, ...override }).success).toBe(false);
   });
@@ -38,7 +39,16 @@ describe('contrato de administração de pacientes', () => {
     expect(output).toEqual(patch.name ? { name: 'Nome Atual' } : { email: 'outro@qa.test' });
   });
 
-  it.each([{}, { name: undefined }, { email: undefined }, { password: 'Nova@1234' }, { role: 'STAFF' }, null, []])(
+  it.each([false, true])('reconhece patch somente de atividade sem ampliar o payload: %s', (active) => {
+    expect(UpdatePatientRequestSchema.parse({ active })).toEqual({ active });
+    expect(UpdatePatientRequestSchema.parse({ name: ' Nome Atual ', active })).toEqual({ name: 'Nome Atual', active });
+  });
+
+  it.each([
+    {}, { name: undefined }, { email: undefined }, { active: undefined },
+    { active: null }, { active: 'false' }, { active: 0 }, { name: 'Nome Válido', active: undefined },
+    { password: 'Nova@1234' }, { role: 'STAFF' }, null, [],
+  ])(
     'rejeita patch vazio, undefined explícito ou mudança de credenciais/perfil: %j', (patch) => {
       expect(UpdatePatientRequestSchema.safeParse(patch).success).toBe(false);
     },

@@ -30,10 +30,10 @@ export function createAuthService({ prisma, clock, signToken }: AuthDeps) {
     async login(input: LoginRequest): Promise<LoginResponse> {
       const user = await prisma.user.findUnique({
         where: { email: input.email },
-        select: { id: true, name: true, email: true, role: true, passwordHash: true },
+        select: { id: true, name: true, email: true, role: true, active: true, passwordHash: true },
       });
       const matches = await bcrypt.compare(input.password, user?.passwordHash ?? DUMMY_HASH);
-      if (!user || !matches) throw unauthorized();
+      if (!user || !matches || !user.active) throw unauthorized();
 
       const issuedAt = Math.floor(clock.now().getTime() / 1000);
       const issued = JwtClaimsSchema.parse({
@@ -53,7 +53,7 @@ export function createAuthService({ prisma, clock, signToken }: AuthDeps) {
 
     async me(userId: string): Promise<User> {
       const user = await prisma.user.findUnique({
-        where: { id: userId },
+        where: { id: userId, active: true },
         select: { id: true, name: true, email: true, role: true },
       });
       if (!user) throw unauthorized();

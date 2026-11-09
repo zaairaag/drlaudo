@@ -44,7 +44,7 @@ describe('S3.9 S3.10 S3.12: escolha explícita de horário', () => {
   });
 });
 
-function openNewAppointment(search: string, creationResponse?: Promise<Response>) {
+function openNewAppointment(search: string, creationResponse?: Promise<Response>, loadPatients = () => Response.json([{ ...appointment.patient, email: 'ana.souza@drlaudo.test', active: true }])) {
   const store = createAppStore();
   store.dispatch(setSession(makeSession('STAFF')));
   const router = createMemoryRouter([
@@ -54,7 +54,7 @@ function openNewAppointment(search: string, creationResponse?: Promise<Response>
   resources.push({ store, router });
   const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
     const request = new URL(String(url), 'http://localhost');
-    if (request.pathname === '/api/patients') return Response.json([{ ...appointment.patient, email: 'ana.souza@drlaudo.test' }]);
+    if (request.pathname === '/api/patients') return loadPatients();
     if (request.pathname === '/api/exam-types') return Response.json([{ ...appointment.examType, code: 'MRI' }]);
     if (request.pathname === '/api/slots') {
       const date = request.searchParams.get('date') ?? '2026-11-10';
@@ -68,6 +68,35 @@ function openNewAppointment(search: string, creationResponse?: Promise<Response>
 }
 
 describe('Continuidade do novo agendamento', () => {
+  it('oferece somente pacientes ativos, mantendo inativo apenas no contexto de retorno', async () => {
+    const inactive = { id: '10000000-0000-4000-8000-000000000099', name: 'Paciente Inativo', email: 'inativo@drlaudo.test', active: false };
+    openNewAppointment(`?date=2026-11-10&patientId=${inactive.id}`, undefined, () => Response.json([
+      { ...appointment.patient, email: 'ana.souza@drlaudo.test', active: true }, inactive,
+    ]));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Paciente' })).toBeEnabled());
+    expect(screen.getByRole('option', { name: appointment.patient.name })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: inactive.name })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Paciente' })).toHaveValue('');
+    expect(screen.getByRole('link', { name: 'Voltar para agenda' })).toHaveAttribute('href', `/agenda?date=2026-11-10&patientId=${inactive.id}`);
+  });
+
+  it('impede envio com paciente que ficou inativo após seleção e oferece administração no catálogo vazio', async () => {
+    let active = true;
+    const { store, fetch, user } = openNewAppointment('?date=2026-11-10', undefined, () => Response.json([
+      { ...appointment.patient, email: 'ana.souza@drlaudo.test', active },
+    ]));
+    await screen.findByRole('button', { name: '10:00, disponível' });
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Paciente' }), appointment.patient.id);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Exame' }), appointment.examType.id);
+    await user.click(screen.getByRole('button', { name: '10:00, disponível' }));
+    active = false;
+    await act(async () => { await store.dispatch(api.endpoints.getPatients.initiate(undefined, { subscribe: false, forceRefetch: true })).unwrap(); });
+    await waitFor(() => expect(screen.queryByRole('option', { name: appointment.patient.name })).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Agendar exame' })).toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Administrar pacientes' })).toHaveAttribute('href', '/pacientes');
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+  });
+
   it('mantém contexto no retorno e ao mudar data, sem pré-selecionar paciente ou exame', async () => {
     const { router, user } = openNewAppointment(`?date=2026-11-10&patientId=${appointment.patient.id}`);
     await screen.findByRole('button', { name: '10:00, disponível' });
@@ -86,9 +115,52 @@ describe('Continuidade do novo agendamento', () => {
     expect(router.state.location.search).toBe(`?date=2026-11-11&patientId=${appointment.patient.id}`);
   });
 
+  it.each([
+    `/agenda?scope=all&view=calendar&calendarDate=2026-11-10&patientId=${appointment.patient.id}`,
+    `/agenda?scope=all&patientId=${appointment.patient.id}`,
+    `/agenda?date=2026-11-10&patientId=${appointment.patient.id}`,
+  ])('returnTo preserva a origem %s ao mudar a data e sair sem criar', async (origin) => {
+    const search = `?date=2026-11-10&patientId=${appointment.patient.id}&returnTo=${encodeURIComponent(origin)}`;
+    const { router, user, fetch } = openNewAppointment(search);
+    await screen.findByRole('button', { name: '10:00, disponível' });
+    expect(screen.getByRole('combobox', { name: 'Paciente' })).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Exame' })).toHaveValue('');
+    expect(screen.getByRole('link', { name: 'Voltar para agenda' })).toHaveAttribute('href', origin);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Paciente' }), appointment.patient.id);
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Exame' }), appointment.examType.id);
+    await user.click(screen.getByRole('button', { name: '10:00, disponível' }));
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2026-11-11' } });
+    await screen.findByRole('button', { name: '10:00, disponível' });
+    expect(new URLSearchParams(router.state.location.search).get('returnTo')).toBe(origin);
+    expect(screen.getByRole('combobox', { name: 'Paciente' })).toHaveValue(appointment.patient.id);
+    expect(screen.getByRole('combobox', { name: 'Exame' })).toHaveValue(appointment.examType.id);
+    expect(screen.getByRole('button', { name: '10:00, disponível' })).toHaveAttribute('aria-pressed', 'false');
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    expect(router.state.location.pathname + router.state.location.search).toBe(origin);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+  });
+
+  it.each([
+    'returnTo=https%3A%2F%2Fexample.test%2Fagenda',
+    'returnTo=%2F%2Fexample.test%2Fagenda',
+    'returnTo=%2Fpacientes',
+    'returnTo=%2Fagendamentos%2Fnovo',
+    'returnTo=%2Fagenda%3Fdate%3D2026-02-30',
+    'returnTo=%2Fagenda%3FreturnTo%3D%252Fagenda',
+    'returnTo=%2Fagenda&returnTo=%2Fagenda',
+  ])('returnTo inválido usa retorno diário legado sem abrir outro destino: %s', async (query) => {
+    const { router, user } = openNewAppointment(`?date=2026-11-10&patientId=${appointment.patient.id}&${query}`);
+    await screen.findByRole('button', { name: '10:00, disponível' });
+    fireEvent.change(screen.getByLabelText('Data'), { target: { value: '2026-11-11' } });
+    await screen.findByRole('button', { name: '10:00, disponível' });
+    await user.click(screen.getByRole('link', { name: 'Voltar para agenda' }));
+    expect(router.state.location.pathname + router.state.location.search).toBe(`/agenda?date=2026-11-11&patientId=${appointment.patient.id}`);
+  });
+
   it('só depois do POST confirmado informa o id criado e retorna sem filtro que o ocultaria', async () => {
     const creation = Promise.withResolvers<Response>();
-    const { router, user } = openNewAppointment('?date=2026-11-10&patientId=10000000-0000-4000-8000-000000000099', creation.promise);
+    const origin = '/agenda?scope=all&view=calendar&calendarDate=2026-11-10';
+    const { router, user, fetch } = openNewAppointment(`?date=2026-11-10&patientId=10000000-0000-4000-8000-000000000099&returnTo=${encodeURIComponent(origin)}`, creation.promise);
     await screen.findByRole('button', { name: '10:00, disponível' });
     await user.selectOptions(screen.getByRole('combobox', { name: 'Paciente' }), appointment.patient.id);
     await user.selectOptions(screen.getByRole('combobox', { name: 'Exame' }), appointment.examType.id);
@@ -97,12 +169,19 @@ describe('Continuidade do novo agendamento', () => {
     await screen.findByRole('button', { name: 'Agendando…' });
     expect(router.state.location.pathname).toBe('/agendamentos/novo');
     expect(router.state.location.state).toBeNull();
+    const writes = fetch.mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(String(writes[0]?.[1]?.body))).toEqual({
+      patientId: appointment.patient.id, examTypeId: appointment.examType.id, startsAt: '2026-11-10T13:00:00.000Z',
+    });
     creation.resolve(Response.json(appointment, { status: 201 }));
     await screen.findByRole('heading', { name: 'Agenda de exames' });
     const query = new URLSearchParams(router.state.location.search);
     expect(query.get('date')).toBe('2026-11-10');
     expect(query.get('focus')).toBe(appointment.id);
     expect(query.has('patientId')).toBe(false);
+    expect(query.has('returnTo')).toBe(false);
+    expect(query.has('scope')).toBe(false);
     expect(router.state.location.state).toEqual({ createdAppointmentId: appointment.id });
   });
 

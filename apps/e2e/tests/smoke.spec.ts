@@ -4,6 +4,7 @@ import {
 } from '@drlaudo/contract';
 import { test, expect } from '@playwright/test';
 import { apiResponse, signIn } from '../support/ui.ts';
+import { clinicDate } from '../support/dates.ts';
 
 test('smoke · proxy alcança API e PostgreSQL reais', async ({ request }) => {
   const response = await request.get('/api/health');
@@ -43,12 +44,12 @@ for (const account of [
     }
     if (account.role === 'STAFF') {
       const appointments = StaffAppointmentListResponseSchema.parse(body);
+      await expect(page.getByRole('grid')).toBeVisible();
+      const selectedDate = new URL(page.url()).searchParams.get('calendarDate');
+      const visibleAppointments = appointments.filter((appointment) => clinicDate(new Date(appointment.startsAt)) === selectedDate);
       await expect.poll(() => page.locator('[data-appointment-id]:visible')
         .evaluateAll((items) => items.map((item) => item.getAttribute('data-appointment-id'))))
-        .toEqual(appointments.map((appointment) => appointment.id));
-      if (appointments.length === 0) {
-        await expect(page.getByText('Nenhum agendamento para os filtros selecionados.', { exact: true })).toBeVisible();
-      }
+        .toEqual(visibleAppointments.map((appointment) => appointment.id));
     } else {
       const appointments = MyAppointmentListResponseSchema.parse(body);
       await expect(page.getByRole('article')).toHaveCount(appointments.length);

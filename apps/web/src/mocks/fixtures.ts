@@ -43,9 +43,9 @@ export function createMemoryStorage(): MockStorage {
 // Resets mock state to predictable isolated test fixtures.
 export function resetTestDb(db: MockDb, nowIso = '2026-11-10T12:00:00.000Z'): void {
   const users: MockUser[] = [
-    { id: TEST_IDS.staff, name: 'Equipe QA', email: 'staff@fixture.test', role: 'STAFF', password: 'Demo@1234', createdAt: nowIso },
-    { id: TEST_IDS.ana, name: 'Ana QA', email: 'ana@fixture.test', role: 'PATIENT', password: 'Demo@1234', createdAt: nowIso },
-    { id: TEST_IDS.bruno, name: 'Bruno QA', email: 'bruno@fixture.test', role: 'PATIENT', password: 'Demo@1234', createdAt: nowIso },
+    { id: TEST_IDS.staff, name: 'Equipe QA', email: 'staff@fixture.test', role: 'STAFF', active: true, password: 'Demo@1234', createdAt: nowIso },
+    { id: TEST_IDS.ana, name: 'Ana QA', email: 'ana@fixture.test', role: 'PATIENT', active: true, password: 'Demo@1234', createdAt: nowIso },
+    { id: TEST_IDS.bruno, name: 'Bruno QA', email: 'bruno@fixture.test', role: 'PATIENT', active: true, password: 'Demo@1234', createdAt: nowIso },
   ];
   const examTypes = [
     { id: TEST_IDS.xray, code: 'XRAY' as const, name: 'Raio-X de tórax' },

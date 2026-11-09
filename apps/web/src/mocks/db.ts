@@ -11,7 +11,6 @@ import {
   localDayRange,
   type ExamType,
   type StaffReport,
-  type User,
 } from '@drlaudo/contract';
 import { z } from 'zod';
 
@@ -25,7 +24,10 @@ export interface MockStorage {
 // This storage contains invented demo data only. Never connect it to real clinical data.
 export const MOCK_SNAPSHOT_KEY = 'drlaudo.mock.v1';
 const SNAPSHOT_VERSION = 1;
-const MockUserSchema = UserSchema.extend({ password: z.string().min(1), createdAt: UtcDateTimeSchema });
+// Storage-only default upgrades older fictitious snapshots without reseeding.
+const MockUserSchema = UserSchema.extend({
+  active: z.boolean().default(true), password: z.string().min(1), createdAt: UtcDateTimeSchema,
+});
 const MockAppointmentSchema = z.strictObject({
   id: UUIDSchema,
   patientId: UUIDSchema,
@@ -44,7 +46,7 @@ const SnapshotSchema = z.strictObject({
   appointments: z.array(MockAppointmentSchema),
   reports: z.array(StoredReportSchema),
 });
-export type MockUser = User & { password: string; createdAt: string };
+export type MockUser = z.infer<typeof MockUserSchema>;
 export type MockAppointment = z.infer<typeof MockAppointmentSchema>;
 export type MockReport = StaffReport & { createdAt: string };
 type SnapshotStatus = 'memory' | 'saved' | 'invalid' | 'unavailable';
@@ -84,9 +86,9 @@ function seed(clock: Clock): Pick<MockDb, 'users' | 'examTypes' | 'appointments'
     return instant;
   });
   const users: MockUser[] = [
-    { id: '10000000-0000-4000-8000-000000000001', name: 'Equipe Dr. Laudo', email: 'equipe@drlaudo.test', role: 'STAFF', password: 'Demo@1234', createdAt: now },
-    { id: '10000000-0000-4000-8000-000000000002', name: 'Ana Souza', email: 'ana.souza@drlaudo.test', role: 'PATIENT', password: 'Demo@1234', createdAt: now },
-    { id: '10000000-0000-4000-8000-000000000003', name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test', role: 'PATIENT', password: 'Demo@1234', createdAt: now },
+    { id: '10000000-0000-4000-8000-000000000001', name: 'Equipe Dr. Laudo', email: 'equipe@drlaudo.test', role: 'STAFF', active: true, password: 'Demo@1234', createdAt: now },
+    { id: '10000000-0000-4000-8000-000000000002', name: 'Ana Souza', email: 'ana.souza@drlaudo.test', role: 'PATIENT', active: true, password: 'Demo@1234', createdAt: now },
+    { id: '10000000-0000-4000-8000-000000000003', name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test', role: 'PATIENT', active: true, password: 'Demo@1234', createdAt: now },
   ];
   const examTypes: ExamType[] = [
     { id: '20000000-0000-4000-8000-000000000001', code: 'XRAY', name: 'Raio-X de tórax' },

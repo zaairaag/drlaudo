@@ -6,6 +6,7 @@ export const PatientSchema = z.strictObject({
   id: UUIDSchema,
   name: z.string().min(1),
   email: EmailSchema,
+  active: z.boolean(),
 });
 export type Patient = z.infer<typeof PatientSchema>;
 
@@ -41,9 +42,10 @@ export const CreatePatientRequestSchema = z.strictObject({
 });
 export type CreatePatientRequest = z.infer<typeof CreatePatientRequestSchema>;
 
-const editableFields = ['name', 'email'] as const;
+const editableFields = ['name', 'email', 'active'] as const;
 
-export const UpdatePatientRequestSchema = CreatePatientRequestSchema.omit({ password: true }).partial()
+export const UpdatePatientRequestSchema = CreatePatientRequestSchema.omit({ password: true })
+  .extend({ active: z.boolean() }).partial()
   .superRefine((value, context) => {
     for (const field of editableFields) {
       if (Object.hasOwn(value, field) && value[field] === undefined) {

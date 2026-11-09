@@ -87,7 +87,7 @@ JWT HS256, issuer/claims exatos e 8h; emissão e verificação recebem o mesmo C
 
 `/me/*` usa sub no where e PUBLISHED na leitura. Alheio/inexistente/próprio sem laudo/próprio DRAFT compartilham 404 canônico. DTO PATIENT não contém identidade de outro paciente nem id/status/metadados de rascunho. Texto clínico é literal e escapado, sem HTML ou Markdown executável.
 
-STAFF pode cadastrar PATIENT e editar somente nome/e-mail. Role e vínculos não mudam; senha inicial literal recebe validação UTF-16/72 bytes UTF-8 antes de bcrypt. E-mail é único entre todos os perfis. Sem cadastro público, exclusão, reset de senha ou mudança de role.
+STAFF cadastra PATIENT ativo, edita nome/e-mail e pode desativar/reativar administrativamente. `User.active` tem default true e migração aditiva; não excluir exames/laudos/conta. Login e autenticação de cada request exigem usuário ativo; histórico permanece acessível STAFF. Criação de exame trava/reconfere User ativo na transação, serializando com desativação; mutações de laudos preservam locks Appointment. Role/senha/vínculos não mudam ao alterar atividade. Sem cadastro público, exclusão física, reset de senha ou mudança de role.
 
 Limiter é por IP, 10 tentativas/60s por padrão, inclusive sucesso/erro de formato; Retry-After informa espera. Confiar somente nos hops configurados, nunca em toda a cadeia arbitrária do cliente. Mesma origem, sem CORS permissivo; HTTP só loopback. Demo não é apropriada para dados clínicos reais.
 
@@ -95,7 +95,7 @@ Limiter é por IP, 10 tentativas/60s por padrão, inclusive sucesso/erro de form
 
 UTC na API/banco; calendário/exibição em `America/Sao_Paulo`, independente do host/browser. Grade 07:00–18:30, inícios hh:00/hh:30 e segundos/ms zero; startsAt <= now é passado. Helpers IANA únicos no contrato; sem offset fixo. Transições históricas omitem posições civis inexistentes. Calendário 0001–9999, fim exclusivo interno pode ser Date do ano10000. Janela padrão é hoje local mais 29 dias, não 720 horas.
 
-Consulta completa STAFF é explícita por `scope=all`, mutuamente exclusiva de `date`. Nesse modo, a consulta Prisma omite o predicado startsAt e mantém patientId opcional, DTO/select e ordenação. A ausência de ambos conserva a janela padrão. A agenda diária continua padrão da UI; o modo completo usa URL recuperável e datas/horas em cada registro. Nenhuma mudança em `/me/*`, permissões ou dados persistidos.
+Consulta completa STAFF é explícita por `scope=all`, mutuamente exclusiva de `date`. Nesse modo, a consulta Prisma omite o predicado startsAt e mantém patientId opcional, DTO/select e ordenação. A ausência de ambos conserva a janela padrão da API. Na UI, a entrada sem contexto abre calendário de hoje; datas explícitas mantêm o modo Dia e `scope=all` sem view mantém Linha do tempo. Nenhuma mudança em `/me/*`, permissões ou dados persistidos.
 
 RTK Query mantém servidor apenas em memória. `drlaudo.session` armazena só LoginResponse; nunca senha, texto clínico, filtros ou listas. F5 restaura por `/auth/me` antes de dados privados. Logout/troca/expiração/storage abortam requests, avançam geração, resetam cache e descartam respostas antigas. Logout local não revoga JWT; risco explícito da demo.
 
@@ -108,6 +108,8 @@ URL representa filtros/contexto e retorno interno seguro. Dados locais dirty fic
 Primitivas shadcn/Radix e componentes de produto compartilhados. Tokens semânticos; `accent` é hover e destaque da marca usa highlight. Status têm texto/ícone, nunca só cor. Inter e Plus Jakarta Sans self-hosted; logo fictício próprio.
 
 Navegação lateral desktop e compacta mobile; tabela vira cards abaixo768px. Alvos de toque >=44px, reflow375px e zoom200%; ações do editor permanecem alcançáveis com fallback de layout em viewport pequeno. Retorno do laudo restaura data/paciente. Terminologia “Data do exame”, não afirma realização prévia.
+
+Agenda STAFF oferece Dia, Calendário e Linha do tempo como modos explícitos. `view=calendar&calendarDate=YYYY-MM-DD` são contexto de navegação, validados com LocalDateSchema e removidos antes da consulta `scope=all`/patientId. A grade reutiliza Calendar/DayPicker e o fuso da clínica; seleção deriva mês/dia da URL. O detalhe de um dia usa lista operacional sem repetir a linha do tempo mensal; grade e lista ficam próximas, lado a lado em tela larga e com atalho de detalhes no celular. Paciente filtrado aparece em contexto compacto. Grade vazia permanece navegável. Retorno seguro do login/laudo e de novo agendamento preserva o contexto válido; `returnTo` de criação é exclusivamente uma URL interna `/agenda` validada e não integra HTTP. Sem endpoints, dependências ou migrações adicionais.
 
 Labels/erros associados, h1 único, skip link, foco visível e retorno seguro do diálogo; publicação tem revisão literal rolável. Axe, teclado e observação de layout complementam-se. Medição WebAIM é necessária antes de alegar contraste; OKLCH e jsdom não comprovam WCAG AA. Aprovação visual humana, leitor nativo e celular físico não são concedidos por testes automatizados.
 

@@ -33,6 +33,9 @@ export function ReportPage() {
   const requestedDate = LocalDateSchema.safeParse(params.get('date'));
   const requestedPatient = UUIDSchema.safeParse(params.get('patientId'));
   const allAppointments = params.getAll('scope').length === 1 && params.get('scope') === 'all' && !params.has('date');
+  const requestedCalendarDate = LocalDateSchema.safeParse(params.get('calendarDate'));
+  const returnCalendar = allAppointments && params.getAll('view').length === 1 && params.get('view') === 'calendar'
+    && params.getAll('calendarDate').length === 1 && requestedCalendarDate.success;
   const confirmedAppointment = appointmentQuery.currentData?.id === id ? appointmentQuery.currentData : undefined;
   const returnDate = requestedDate.success && params.getAll('date').length === 1
     ? requestedDate.data
@@ -42,6 +45,7 @@ export function ReportPage() {
   const agendaParams = new URLSearchParams({
     ...(allAppointments ? { scope: 'all' } : returnDate ? { date: returnDate } : {}),
     ...(returnPatientId ? { patientId: returnPatientId } : {}),
+    ...(returnCalendar && requestedCalendarDate.success ? { view: 'calendar', calendarDate: requestedCalendarDate.data } : {}),
   });
   const agendaHref = `/agenda${agendaParams.size ? `?${agendaParams}` : ''}`;
 
@@ -292,8 +296,29 @@ export function ReportPage() {
     );
   }
 
-  const appointment = appointmentQuery.currentData;
+  const appointment = confirmedAppointment;
   if (!appointment) return null;
+  const appointmentIdentity = (
+    <section aria-label="Identificação do exame" className="border-y border-border py-5 text-sm">
+      <dl className="flex min-w-0 flex-wrap items-center justify-between gap-4">
+        <div className="min-w-0">
+          <dt className="sr-only">Paciente</dt>
+          <dd className="break-words font-display text-lg font-semibold text-foreground">{appointment.patient.name}</dd>
+          <dt className="sr-only">Exame</dt>
+          <dd className="mt-1 break-words text-muted-foreground">{appointment.examType.name}</dd>
+        </div>
+        <div className="sm:text-right">
+          <dt className="text-xs text-muted-foreground">Data do exame</dt>
+          <dd className="mt-1">
+            <time dateTime={appointment.startsAt} className="block tabular-nums font-medium text-foreground">
+              {formatDateTime(appointment.startsAt)}
+            </time>
+            <TimezoneNote />
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
 
   // Reconciliação do laudo
   const hasReportSummary = appointment.report !== null;
@@ -309,19 +334,22 @@ export function ReportPage() {
   // Se agendamento tem resumo de laudo mas GET /report deu 404 ou 500: inconsistência!
   if (hasReportSummary && reportQuery.isError) {
     return (
-      <div role="alert" className="p-8 text-center">
-        <p className="text-sm text-destructive">
-          Inconsistência na recuperação do laudo. Não foi possível carregar os dados.
-        </p>
-        <div className="mt-4 flex flex-wrap justify-center gap-3">
-          <Button variant="outline" onClick={() => void handleRetryBoth()}>
-            Tentar novamente
-          </Button>
-          <Button asChild variant="outline">
-            <Link to={agendaHref}>Voltar para a agenda</Link>
-          </Button>
+      <div className="space-y-6">
+        {appointmentIdentity}
+        <div role="alert" className="p-8 text-center">
+          <p className="text-sm text-destructive">
+            Inconsistência na recuperação do laudo. Não foi possível carregar os dados.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <Button variant="outline" onClick={() => void handleRetryBoth()}>
+              Tentar novamente
+            </Button>
+            <Button asChild variant="outline">
+              <Link to={agendaHref}>Voltar para a agenda</Link>
+            </Button>
+          </div>
+          {discardDialog}
         </div>
-        {discardDialog}
       </div>
     );
   }
@@ -329,19 +357,22 @@ export function ReportPage() {
   // Se agendamento não tem laudo, mas GET /report deu erro diferente de 404 (ex: 500)
   if (!hasReportSummary && reportQuery.isError && !isReportQuery404) {
     return (
-      <div role="alert" className="p-8 text-center">
-        <p className="text-sm text-destructive">
-          Não foi possível carregar os dados do laudo. Tente novamente.
-        </p>
-        <div className="mt-4 flex flex-wrap justify-center gap-3">
-          <Button variant="outline" onClick={() => void handleRetryBoth()}>
-            Tentar novamente
-          </Button>
-          <Button asChild variant="outline">
-            <Link to={agendaHref}>Voltar para a agenda</Link>
-          </Button>
+      <div className="space-y-6">
+        {appointmentIdentity}
+        <div role="alert" className="p-8 text-center">
+          <p className="text-sm text-destructive">
+            Não foi possível carregar os dados do laudo. Tente novamente.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <Button variant="outline" onClick={() => void handleRetryBoth()}>
+              Tentar novamente
+            </Button>
+            <Button asChild variant="outline">
+              <Link to={agendaHref}>Voltar para a agenda</Link>
+            </Button>
+          </div>
+          {discardDialog}
         </div>
-        {discardDialog}
       </div>
     );
   }
@@ -349,8 +380,11 @@ export function ReportPage() {
   // Aguarda carregamento do laudo quando necessário
   if (isReportQueryLoading) {
     return (
-      <div role="status" aria-live="polite" className="p-8 text-center text-muted-foreground">
-        Carregando laudo…
+      <div className="space-y-6">
+        {appointmentIdentity}
+        <div role="status" aria-live="polite" className="p-8 text-center text-muted-foreground">
+          Carregando laudo…
+        </div>
       </div>
     );
   }
@@ -374,14 +408,7 @@ export function ReportPage() {
           description="Este agendamento foi cancelado e não admite novos laudos."
         />
 
-        <div className="rounded-xl border bg-card p-6 text-sm">
-          <strong className="block text-foreground">{appointment.patient.name}</strong>
-          <span className="mt-1 block text-foreground">{appointment.examType.name}</span>
-          <span className="mt-2 block tabular-nums text-foreground">
-            {formatDateTime(appointment.startsAt)}
-          </span>
-          <TimezoneNote />
-        </div>
+        {appointmentIdentity}
 
         {preservedEdits}
         {resolvedReport ? (
@@ -421,6 +448,7 @@ export function ReportPage() {
           title="Laudo do exame"
           description="Resultado final publicado e disponível ao paciente."
         />
+        {appointmentIdentity}
         <p role="alert" className="rounded-lg bg-muted p-4 text-sm text-muted-foreground font-medium">
           Este laudo foi publicado e não pode ser alterado.
         </p>
@@ -457,20 +485,7 @@ export function ReportPage() {
         description="Escreva, salve o rascunho e publique o resultado para o paciente."
       />
 
-      <div className="border-y border-border py-5 text-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <strong className="block font-display text-lg font-semibold text-foreground">{appointment.patient.name}</strong>
-            <span className="mt-1 block text-muted-foreground">{appointment.examType.name}</span>
-          </div>
-          <div className="sm:text-right">
-            <span className="block tabular-nums font-medium text-foreground">
-              {formatDateTime(appointment.startsAt)}
-            </span>
-            <TimezoneNote />
-          </div>
-        </div>
-      </div>
+      {appointmentIdentity}
 
       {mutationError && (
         <p role="alert" className="rounded-lg bg-destructive-soft p-4 text-sm text-destructive">

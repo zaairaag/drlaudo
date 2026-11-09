@@ -18,7 +18,7 @@ describe('administração de pacientes · contrato STAFF', () => {
     });
     expect(response.statusCode).toBe(201);
     const patient = PatientSchema.parse(response.json());
-    expect(patient).toEqual({ id: expect.any(String), name: 'Nova Paciente', email: 'nova@qa.test' });
+    expect(patient).toEqual({ id: expect.any(String), name: 'Nova Paciente', email: 'nova@qa.test', active: true });
     const stored = await testPrisma().user.findUniqueOrThrow({ where: { id: patient.id } });
     expect(stored.role).toBe('PATIENT');
     expect(stored.passwordHash).not.toBe(patientInput.password);
@@ -55,7 +55,7 @@ describe('administração de pacientes · contrato STAFF', () => {
     });
     expect(changed.statusCode).toBe(200);
     expect(PatientSchema.parse(changed.json())).toEqual({
-      id: QA.anaId, name: 'Ana Atualizada', email: 'ana.nova@qa.test',
+      id: QA.anaId, name: 'Ana Atualizada', email: 'ana.nova@qa.test', active: true,
     });
     const after = await db.user.findUniqueOrThrow({ where: { id: QA.anaId } });
     expect(after).toEqual({ ...before, name: 'Ana Atualizada', email: 'ana.nova@qa.test' });
@@ -158,6 +158,8 @@ describe('administração de pacientes · contrato STAFF', () => {
     { payload: { name: 'Nome Válido', email: 'novo@qa.test', password: 'é'.repeat(37) }, path: 'password', rule: 'TOO_LONG' },
     { payload: { name: 'Nome Válido', email: 'novo@qa.test', password: '😀'.repeat(19) }, path: 'password', rule: 'TOO_LONG' },
     { payload: { name: 'Nome Válido', email: 'novo@qa.test', password: '12345678', role: 'STAFF' }, path: 'role', rule: 'UNKNOWN_FIELD' },
+    { payload: { ...patientInput, active: false }, path: 'active', rule: 'UNKNOWN_FIELD' },
+    { payload: { ...patientInput, active: true }, path: 'active', rule: 'UNKNOWN_FIELD' },
   ])('valida criação $path/$rule e não grava', async ({ payload, path, rule }) => {
     const app = await buildTestApp();
     const token = await login(app, 'equipe@qa.test');
@@ -172,6 +174,8 @@ describe('administração de pacientes · contrato STAFF', () => {
     { payload: { password: 'Nova@1234' }, path: ['password'], rule: 'UNKNOWN_FIELD' },
     { payload: { role: 'STAFF' }, path: ['role'], rule: 'UNKNOWN_FIELD' },
     { payload: { name: null }, path: ['name'], rule: 'INVALID_TYPE' },
+    { payload: { active: null }, path: ['active'], rule: 'INVALID_TYPE' },
+    { payload: { active: 'false' }, path: ['active'], rule: 'INVALID_TYPE' },
   ])('rejeita patch inválido sem mudar dados: $rule', async ({ payload, path, rule }) => {
     const app = await buildTestApp();
     const token = await login(app, 'equipe@qa.test');

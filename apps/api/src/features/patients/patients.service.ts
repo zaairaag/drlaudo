@@ -12,7 +12,7 @@ import { DomainError, notFound } from '../../errors.ts';
 import { isEmailConflict } from '../../lib/prisma-errors.ts';
 import type { PrismaClient } from '../../prisma.ts';
 
-const patientSelect = { id: true, name: true, email: true } as const;
+const patientSelect = { id: true, name: true, email: true, active: true } as const;
 
 export interface PatientsService {
   list(): Promise<Patient[]>;
@@ -28,7 +28,7 @@ export function createPatientsService(
       // C collation on UTF-8 compares Unicode code points, unlike the database
       // locale or JavaScript's default UTF-16 sort. Every column is explicit.
       const rows: unknown = await prisma.$queryRaw`
-        SELECT id, name, email FROM "User"
+        SELECT id, name, email, active FROM "User"
         WHERE role = 'PATIENT'
         ORDER BY name COLLATE "C" ASC, id ASC
       `;
@@ -66,6 +66,7 @@ export function createPatientsService(
             data: {
               ...(input.name !== undefined ? { name: input.name } : {}),
               ...(input.email !== undefined ? { email: input.email } : {}),
+              ...(input.active !== undefined ? { active: input.active } : {}),
             },
             select: patientSelect,
           });

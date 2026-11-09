@@ -1,28 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, FileText } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { toast } from 'sonner';
-import { AppointmentListQuerySchema, type StaffAppointment } from '@drlaudo/contract';
+import { AppointmentListQuerySchema, LocalDateSchema, type StaffAppointment } from '@drlaudo/contract';
 import { api, useCancelAppointmentMutation, useGetAppointmentsQuery, useGetPatientsQuery } from '../../app/api';
+import { appointmentCreationHref } from '../../app/navigation';
 import { useAppStore } from '../../app/hooks';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
 import { Select } from '../../components/ui/select';
+import { Badge } from '../../components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
 import { PageHeader } from '../../components/product/PageHeader';
-import { StatusBadge } from '../../components/product/StatusBadge';
 import { EmptyState } from '../../components/product/EmptyState';
 import { TimezoneNote } from '../../components/product/TimezoneNote';
-import { CancelDialog } from '../../components/product/CancelDialog';
-import { formatDate, formatDateTime, formatLongDate, formatTime, shiftDate, todayDate } from '../../lib/time';
+import { AppointmentTimeline } from '../../components/product/AppointmentTimeline';
+import { AppointmentCalendar } from '../../components/product/AppointmentCalendar';
+import { AppointmentDayList } from '../../components/product/AppointmentDayList';
+import { PatientDialog } from '../../components/product/PatientDialog';
+import { formatLongDate, shiftDate, todayDate } from '../../lib/time';
 import { getErrorMessage } from '../../lib/errors';
-
-function reportAction(appointment: StaffAppointment) {
-  if (appointment.status === 'CANCELED') return 'Ver agendamento';
-  if (!appointment.report) return 'Criar laudo';
-  return appointment.report.status === 'DRAFT' ? 'Editar laudo' : 'Ver laudo';
-}
 
 export function AgendaPage() {
   const [params, setParams] = useSearchParams();
@@ -34,22 +32,34 @@ export function AgendaPage() {
     ? navigationState.createdAppointmentId : null;
   const focusId = params.getAll('focus').length === 1 ? params.get('focus') : null;
   const today = todayDate();
-  const scope = params.get('scope');
+  const defaultCalendar = !params.has('date') && !params.has('scope') && !params.has('view') && !params.has('calendarDate');
+  const scope = params.get('scope') ?? (defaultCalendar ? 'all' : null);
   const allAppointments = scope === 'all';
-  const selectedDate = params.get('date') ?? (params.has('scope') ? '' : today);
+  const calendarMode = defaultCalendar || params.get('view') === 'calendar';
+  const calendarDate = params.get('calendarDate') ?? today;
+  const visualContextValid = !params.has('view') && !params.has('calendarDate')
+    || allAppointments && calendarMode && (defaultCalendar || params.has('calendarDate')) && LocalDateSchema.safeParse(calendarDate).success;
+  const selectedDate = params.get('date') ?? '';
   const patientId = params.get('patientId') ?? '';
   const rawQuery = {
     ...(scope !== null ? { scope } : {}),
-    ...(params.has('date') || !params.has('scope') ? { date: selectedDate } : {}),
+    ...(params.has('date') ? { date: selectedDate } : {}),
     ...(patientId ? { patientId } : {}),
   };
   const parsed = AppointmentListQuerySchema.safeParse(rawQuery);
-  const duplicate = ['date', 'patientId', 'scope'].some((key) => params.getAll(key).length > 1);
-  const valid = parsed.success && !duplicate;
-  const reportSearch = valid ? `?${new URLSearchParams(rawQuery)}` : '';
+  const duplicate = ['date', 'patientId', 'scope', 'view', 'calendarDate'].some((key) => params.getAll(key).length > 1);
+  const valid = parsed.success && !duplicate && visualContextValid;
+  const activeDate = calendarMode ? calendarDate : selectedDate;
+  const dateControlsDisabled = !valid;
+  const dateForMode = valid && (!allAppointments || calendarMode) ? activeDate : today;
+  const reportSearch = valid ? `?${new URLSearchParams({
+    ...rawQuery,
+    ...(calendarMode ? { view: 'calendar', calendarDate } : {}),
+  })}` : '';
   const patients = useGetPatientsQuery();
+  const selectedPatient = patients.isError ? undefined : patients.currentData?.find((patient) => patient.id === patientId);
   const patientName = patientId
-    ? patients.currentData?.find((patient) => patient.id === patientId)?.name ?? 'Paciente selecionado (catálogo indisponível)'
+    ? selectedPatient?.name ?? 'Paciente selecionado (catálogo indisponível)'
     : 'Todos os pacientes';
   const agenda = useGetAppointmentsQuery(parsed.success ? parsed.data : {}, { skip: !valid });
   const [cancel, cancelState] = useCancelAppointmentMutation();
@@ -59,16 +69,19 @@ export function AgendaPage() {
   const cancellationBusy = cancelState.isLoading || reconciling || pendingCancellation !== null;
   const desktopAppointmentRef = useRef<HTMLTableRowElement>(null);
   const mobileAppointmentRef = useRef<HTMLElement>(null);
+  const calendarDayHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusedLocation = useRef<string | null>(null);
   const appointments = agenda.currentData ?? [];
+  const monthAppointments = calendarMode ? appointments.filter((item) => todayDate(new Date(item.startsAt)).startsWith(calendarDate.slice(0, 7))) : appointments;
+  const dayAppointments = calendarMode ? monthAppointments.filter((item) => todayDate(new Date(item.startsAt)) === calendarDate) : appointments;
   const agendaReady = valid && agenda.isSuccess && !agenda.isFetching && !agenda.isError;
   const focusedAppointment = agendaReady ? appointments.find((item) => item.id === focusId) : undefined;
   const createdAppointment = focusedAppointment?.id === createdAppointmentId ? focusedAppointment : undefined;
   useEffect(() => {
-    if (valid && !params.has('date') && !params.has('scope')) {
-      setParams({ date: today, ...(patientId ? { patientId } : {}) }, { replace: true });
+    if (valid && defaultCalendar) {
+      setParams({ scope: 'all', ...(patientId ? { patientId } : {}), view: 'calendar', calendarDate: today }, { replace: true, preventScrollReset: true });
     }
-  }, [params, valid, today, patientId, setParams]);
+  }, [defaultCalendar, valid, today, patientId, setParams]);
   useEffect(() => {
     if (!focusedAppointment || focusedLocation.current === location.key) return;
     const desktop = desktopAppointmentRef.current;
@@ -87,6 +100,14 @@ export function AgendaPage() {
   function showAllAppointments() {
     setParams({ scope: 'all', ...(patientId ? { patientId } : {}) });
     setFeedback('');
+  }
+  function showCalendar(date: string) {
+    setParams({ scope: 'all', ...(patientId ? { patientId } : {}), view: 'calendar', calendarDate: date }, { preventScrollReset: true });
+    setFeedback('');
+  }
+  function selectDate(date: string) {
+    if (calendarMode) showCalendar(date);
+    else filters(date);
   }
   function filterPatient(patient: string) {
     const next = new URLSearchParams(params);
@@ -142,13 +163,13 @@ export function AgendaPage() {
     }
     if (store.getState().auth.generation === generation) await reconcileCancellation(item, generation);
   }
-  const scheduled = appointments.filter((item) => item.status === 'SCHEDULED').length;
+  const scheduled = monthAppointments.filter((item) => item.status === 'SCHEDULED').length;
   return (
-    <div className="space-y-7 sm:space-y-8">
+    <div className="space-y-4 sm:space-y-5">
       <PageHeader
         title="Agenda de exames"
-        description="Cada cuidado começa com uma boa organização."
-        actions={<Button asChild><Link to={`/agendamentos/novo?${new URLSearchParams({ date: valid && !allAppointments ? selectedDate : today, ...(valid && patientId ? { patientId } : {}) })}`}><Plus className="size-4" aria-hidden />Novo agendamento</Link></Button>}
+        className="gap-3 pb-0 sm:items-center [&_h1]:text-2xl sm:[&_h1]:text-3xl"
+        actions={<Button asChild><Link to={appointmentCreationHref(`/agenda${reportSearch}`)}><Plus className="size-4" aria-hidden />Novo agendamento</Link></Button>}
       />
 
       {createdAppointment && (
@@ -159,27 +180,48 @@ export function AgendaPage() {
       )}
 
       <section className="min-w-0 rounded-xl border bg-card" aria-label="Agendamentos">
-        <div className="grid items-end gap-5 p-5 sm:p-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="agenda-date">Data</Label>
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-2">
-              <Button variant="outline" size="icon" disabled={!valid || allAppointments || selectedDate === '0001-01-01'} aria-label="Dia anterior" onClick={() => filters(shiftDate(selectedDate, -1))}><ChevronLeft className="size-4" /></Button>
-              <Input id="agenda-date" className="font-medium tabular-nums" type="date" min="0001-01-01" max="9999-12-31" value={selectedDate} onChange={(event) => filters(event.target.value)} />
-              <Button variant="outline" size="icon" disabled={!valid || allAppointments || selectedDate === '9999-12-31'} aria-label="Próximo dia" onClick={() => filters(shiftDate(selectedDate, 1))}><ChevronRight className="size-4" /></Button>
+        <div className="space-y-3 p-3 sm:p-4">
+          <div role="group" aria-label="Visualização da agenda" className="flex w-full gap-1 rounded-lg bg-muted p-1 sm:w-fit">
+            <Button className="min-w-0 flex-1 whitespace-normal px-2 sm:flex-none sm:px-4" variant={valid && !allAppointments ? 'secondary' : 'ghost'} aria-pressed={valid && !allAppointments} onClick={() => filters(dateForMode)}>Dia</Button>
+            <Button className="min-w-0 flex-1 whitespace-normal px-2 sm:flex-none sm:px-4" variant={valid && calendarMode ? 'secondary' : 'ghost'} aria-pressed={valid && calendarMode} onClick={() => showCalendar(dateForMode)}>Calendário</Button>
+            <Button className="min-w-0 flex-1 whitespace-normal px-2 sm:flex-none sm:px-4" variant={valid && allAppointments && !calendarMode ? 'secondary' : 'ghost'} aria-pressed={valid && allAppointments && !calendarMode} onClick={showAllAppointments}>Linha do tempo</Button>
+          </div>
+          <div className="grid items-end gap-3 sm:grid-cols-2">
+            {valid && allAppointments && !calendarMode ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Período</p>
+                <p className="flex min-h-11 items-center gap-2 text-sm text-muted-foreground"><CalendarDays className="size-4" aria-hidden />Todos os períodos</p>
+              </div>
+            ) : (
+              <div className="min-w-0 space-y-2">
+                <Label htmlFor="agenda-date">Data</Label>
+                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-1.5">
+                  <Button variant="outline" size="icon" disabled={dateControlsDisabled || activeDate === '0001-01-01'} aria-label="Dia anterior" onClick={() => selectDate(shiftDate(activeDate, -1))}><ChevronLeft className="size-4" aria-hidden /></Button>
+                  <Input id="agenda-date" className="min-w-0 px-2 font-medium tabular-nums" type="date" min="0001-01-01" max="9999-12-31" value={activeDate} onChange={(event) => selectDate(event.target.value)} />
+                  <Button variant="outline" size="icon" disabled={dateControlsDisabled || activeDate === '9999-12-31'} aria-label="Próximo dia" onClick={() => selectDate(shiftDate(activeDate, 1))}><ChevronRight className="size-4" aria-hidden /></Button>
+                  <Button variant="ghost" className="px-2" onClick={() => selectDate(todayDate())}>Hoje</Button>
+                </div>
+              </div>
+            )}
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="agenda-patient">Paciente</Label>
+              <Select id="agenda-patient" value={patientId} onChange={(event) => filterPatient(event.target.value)} disabled={patients.isFetching || patients.isError || !patients.currentData} aria-describedby={patients.isError ? 'agenda-patients-error' : undefined}>
+                <option value="">Todos os pacientes</option>
+                {patientId && !patients.currentData?.some((patient) => patient.id === patientId) && <option value={patientId}>Paciente selecionado (catálogo indisponível)</option>}
+                {patients.currentData?.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}{!patient.active ? ' · Inativo' : ''}</option>)}
+              </Select>
             </div>
           </div>
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="agenda-patient">Paciente</Label>
-            <Select id="agenda-patient" value={patientId} onChange={(event) => filterPatient(event.target.value)} disabled={patients.isFetching || patients.isError || !patients.currentData} aria-describedby={patients.isError ? 'agenda-patients-error' : undefined}>
-              <option value="">Todos os pacientes</option>
-              {patientId && !patients.currentData?.some((patient) => patient.id === patientId) && <option value={patientId}>Paciente selecionado (catálogo indisponível)</option>}
-              {patients.currentData?.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
-            </Select>
-          </div>
-          <div className="flex min-w-0 flex-wrap gap-2 md:col-span-2">
-            <Button variant={valid && !allAppointments && selectedDate === today ? 'secondary' : 'ghost'} aria-pressed={valid && !allAppointments && selectedDate === today} onClick={() => filters(todayDate())}><CalendarDays className="size-4" aria-hidden />Hoje</Button>
-            <Button variant={valid && allAppointments ? 'secondary' : 'outline'} className="min-w-0 shrink whitespace-normal" aria-pressed={valid && allAppointments} onClick={showAllAppointments}>Ver todos os agendamentos</Button>
-          </div>
+          {valid && patientId && (
+            <section aria-label="Paciente selecionado" className="min-w-0 space-y-2 border-t pt-3">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+                <strong className="sr-only">{patientName}</strong>
+                {selectedPatient && <Badge variant={selectedPatient.active ? 'secondary' : 'outline'}>{selectedPatient.active ? 'Ativo' : 'Inativo'}</Badge>}
+                {selectedPatient && <PatientDialog key={selectedPatient.id} patient={selectedPatient} disabled={patients.isError} onSaved={setFeedback} />}
+              </div>
+              {selectedPatient?.active === false && <p className="text-xs leading-relaxed text-muted-foreground">Conta e novos agendamentos desativados. Histórico e edição de rascunhos continuam disponíveis.</p>}
+            </section>
+          )}
         </div>
         {patients.isError && (
           <Alert id="agenda-patients-error" variant="destructive" className="mx-5 mb-5 w-auto sm:mx-6">
@@ -188,19 +230,16 @@ export function AgendaPage() {
           </Alert>
         )}
 
-        <div className="space-y-4 border-y bg-muted/30 px-5 py-4 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-            <div className="flex min-w-0 flex-wrap items-center gap-3">
-              <h2 className="font-display text-lg font-semibold leading-relaxed tracking-tight sm:text-xl">{valid ? allAppointments ? 'Todos os agendamentos' : <time dateTime={selectedDate}>{formatLongDate(selectedDate)}</time> : 'Agendamentos'}</h2>
-              {valid && !allAppointments && selectedDate === today && <span className="rounded-full bg-highlight-soft px-2.5 py-1 text-xs font-semibold text-highlight-strong">Hoje</span>}
-            </div>
-            <TimezoneNote />
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-y bg-muted/30 px-4 py-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="font-display text-base font-semibold leading-relaxed tracking-tight">{valid ? calendarMode ? 'Calendário de exames' : allAppointments ? 'Todos os agendamentos' : <time dateTime={selectedDate}>{formatLongDate(selectedDate)}</time> : 'Agendamentos'}</h2>
+            {valid && !allAppointments && selectedDate === today && <span className="rounded-full bg-highlight-soft px-2.5 py-1 text-xs font-semibold text-highlight-strong">Hoje</span>}
           </div>
-          {valid && allAppointments && <p className="break-words text-sm text-muted-foreground">{patientName}</p>}
-          <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm" aria-label="Resumo da agenda">
-            <div className="flex items-baseline gap-2"><dt className="text-muted-foreground">Exames no período</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : appointments.length}</dd></div>
-            <div className="flex items-baseline gap-2"><dt className="text-muted-foreground">Agendados</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : scheduled}</dd></div>
-            <div className="flex items-baseline gap-2"><dt className="text-muted-foreground">Laudos publicados</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : appointments.filter((item) => item.report?.status === 'PUBLISHED').length}</dd></div>
+          <TimezoneNote />
+          <dl className="flex w-full flex-wrap gap-x-4 gap-y-1 text-xs" aria-label="Resumo da agenda">
+            <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">{calendarMode ? 'Exames no mês' : 'Exames no período'}</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : monthAppointments.length}</dd></div>
+            <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Agendados</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : scheduled}</dd></div>
+            <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Laudos publicados</dt><dd className="font-semibold tabular-nums">{agenda.isFetching ? '—' : monthAppointments.filter((item) => item.report?.status === 'PUBLISHED').length}</dd></div>
           </dl>
         </div>
 
@@ -229,78 +268,36 @@ export function AgendaPage() {
             <p>Não foi possível carregar a agenda.</p>
             <Button variant="outline" className="mt-4" onClick={() => { void agenda.refetch(); }}>Tentar novamente</Button>
           </div>
+        ) : calendarMode ? (
+          <div className="grid min-w-0 xl:grid-cols-[minmax(20rem,0.9fr)_minmax(0,1.1fr)]">
+            <div className="min-w-0">
+              <div className="px-3 pt-3 xl:hidden">
+                <Button asChild variant="outline" className="w-full">
+                  <a href="#calendar-day-heading" onClick={(event) => {
+                    event.preventDefault();
+                    const heading = calendarDayHeadingRef.current;
+                    heading?.focus({ preventScroll: true });
+                    heading?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+                  }}>Ver exames do dia ({dayAppointments.length})</a>
+                </Button>
+              </div>
+              <AppointmentCalendar appointments={appointments} selectedDate={calendarDate} today={today} onDateChange={showCalendar} />
+            </div>
+            <section aria-labelledby="calendar-day-heading" className="min-w-0 border-t xl:border-l xl:border-t-0">
+              <h3 ref={calendarDayHeadingRef} id="calendar-day-heading" tabIndex={-1} className="scroll-mt-36 px-4 py-4 font-display text-base font-semibold outline-none focus:ring-2 focus:ring-inset focus:ring-ring sm:px-5 xl:scroll-mt-6" aria-live="polite">{formatLongDate(calendarDate)}</h3>
+              {dayAppointments.length === 0 ? (
+                <p className="px-4 pb-5 text-sm text-muted-foreground sm:px-5">Nenhum exame neste dia para os filtros selecionados.</p>
+              ) : (
+                <AppointmentDayList appointments={dayAppointments} today={today} reportSearch={reportSearch} focusId={focusId} desktopFocusRef={desktopAppointmentRef} mobileFocusRef={mobileAppointmentRef} createdAppointmentId={createdAppointment?.id} cancellationBusy={cancellationBusy} onCancel={cancelAppointment} compact />
+              )}
+            </section>
+          </div>
         ) : appointments.length === 0 ? (
           <EmptyState title="Nenhum agendamento para os filtros selecionados." description="Experimente outra data ou agende um novo exame." action={<Button variant="outline" onClick={() => filters(todayDate(), '')}>Limpar filtros</Button>} />
+        ) : allAppointments ? (
+          <AppointmentTimeline appointments={appointments} today={today} reportSearch={reportSearch} focusId={focusId} focusRef={mobileAppointmentRef} createdAppointmentId={createdAppointment?.id} cancellationBusy={cancellationBusy} onCancel={cancelAppointment} />
         ) : (
-          <>
-            <div className="hidden overflow-x-auto xl:block">
-              <table className="w-full text-left text-sm">
-                <thead className="text-xs text-muted-foreground">
-                  <tr className="border-b">
-                    <th scope="col" className={`${allAppointments ? 'w-36' : 'w-24'} px-6 py-4 font-medium`}>{allAppointments ? 'Data e horário' : 'Horário'}</th>
-                    <th scope="col" className="px-4 py-4 font-medium">Paciente / exame</th>
-                    <th scope="col" className="px-4 py-4 font-medium">Situação</th>
-                    <th scope="col" className="px-4 py-4 font-medium">Laudo</th>
-                    <th scope="col" className="px-6 py-4 font-medium"><span className="sr-only">Ações</span></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {appointments.map((item) => (
-                    <tr key={item.id} ref={item.id === focusId ? desktopAppointmentRef : undefined} data-appointment-id={item.id} tabIndex={-1} className={`scroll-mt-6 transition-colors hover:bg-muted/25 focus:outline-2 focus:outline-offset-[-2px] focus:outline-ring${createdAppointment?.id === item.id ? ' bg-highlight-soft/50' : ''}`}>
-                      <td className="px-6 py-5 align-top">
-                        <time dateTime={item.startsAt} className="font-semibold tabular-nums tracking-tight">
-                          {allAppointments && <span className="mb-1 block whitespace-nowrap text-sm">{formatDate(item.startsAt)}</span>}
-                          <span className="text-lg">{formatTime(item.startsAt)}</span>
-                        </time>
-                      </td>
-                      <td className="px-4 py-5 align-top">
-                        <strong className="block font-semibold leading-6">{item.patient.name}</strong>
-                        <span className="mt-0.5 block leading-6 text-muted-foreground">{item.examType.name}</span>
-                        {createdAppointment?.id === item.id && <span className="mt-2 inline-flex rounded-full border border-highlight/30 bg-highlight-soft px-2 py-0.5 text-xs font-semibold text-highlight-strong">Recém-agendado</span>}
-                      </td>
-                      <td className="px-4 py-5 align-top"><StatusBadge status={item.status} /></td>
-                      <td className="px-4 py-5 align-top">{item.report ? <StatusBadge status={item.report.status} /> : <span className="inline-block py-1 text-muted-foreground">Sem laudo</span>}</td>
-                      <td className="px-6 py-4 align-top">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button asChild variant="outline" size="sm"><Link className="whitespace-nowrap" to={`/agendamentos/${item.id}/laudo${reportSearch}`}><FileText className="size-4" aria-hidden />{reportAction(item)}</Link></Button>
-                          {item.status === 'SCHEDULED' && item.report?.status !== 'PUBLISHED' && <CancelDialog appointment={item} pending={cancellationBusy} onConfirm={() => cancelAppointment(item)} />}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="divide-y xl:hidden">
-              {appointments.map((item) => (
-                <article key={item.id} ref={item.id === focusId ? mobileAppointmentRef : undefined} data-appointment-id={item.id} tabIndex={-1} className={`scroll-mt-6 p-5 focus:outline-2 focus:outline-offset-[-2px] focus:outline-ring sm:p-6${createdAppointment?.id === item.id ? ' bg-highlight-soft/50' : ''}`}>
-                  <div className={`grid gap-4 ${allAppointments ? 'grid-cols-[6.5rem_minmax(0,1fr)]' : 'grid-cols-[4.5rem_minmax(0,1fr)] sm:grid-cols-[5.5rem_minmax(0,1fr)]'}`}>
-                    <div>
-                      <time dateTime={item.startsAt} className="font-semibold tabular-nums tracking-tight">
-                        {allAppointments && <span className="mb-1 block text-sm">{formatDate(item.startsAt)}</span>}
-                        <span className="text-xl sm:text-2xl">{formatTime(item.startsAt)}</span>
-                      </time>
-                      {!allAppointments && <span className="sr-only">{formatDateTime(item.startsAt)}</span>}
-                    </div>
-                    <div className="min-w-0">
-                      <h3 className="break-words font-semibold leading-6">{item.patient.name}</h3>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">{item.examType.name}</p>
-                      {createdAppointment?.id === item.id && <span className="mt-2 inline-flex rounded-full border border-highlight/30 bg-highlight-soft px-2 py-0.5 text-xs font-semibold text-highlight-strong">Recém-agendado</span>}
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <StatusBadge status={item.status} />
-                        {item.report ? <StatusBadge status={item.report.status} /> : <span className="text-xs text-muted-foreground">Sem laudo</span>}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
-                    <Button asChild variant="outline" size="sm"><Link to={`/agendamentos/${item.id}/laudo${reportSearch}`}><FileText className="size-4" aria-hidden />{reportAction(item)}</Link></Button>
-                    {item.status === 'SCHEDULED' && item.report?.status !== 'PUBLISHED' && <CancelDialog appointment={item} pending={cancellationBusy} onConfirm={() => cancelAppointment(item)} />}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </>
+          <AppointmentDayList appointments={appointments} today={today} reportSearch={reportSearch} focusId={focusId} desktopFocusRef={desktopAppointmentRef} mobileFocusRef={mobileAppointmentRef} createdAppointmentId={createdAppointment?.id} cancellationBusy={cancellationBusy} onCancel={cancelAppointment} compact={false} />
         )}
       </section>
       {feedback && <p role="status" aria-live="polite" className="text-sm">{feedback}</p>}

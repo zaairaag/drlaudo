@@ -31,6 +31,7 @@ model User {
   email        String   @unique
   passwordHash String
   role         Role
+  active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @db.Timestamptz(3)
 
   appointments Appointment[]

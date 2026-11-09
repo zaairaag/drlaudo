@@ -92,6 +92,7 @@ test('RF-06/07 · URL/F5, criação, revisão salva e publicação explícita im
   await expect(page.getByRole('button', { name: 'Salvar rascunho', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(page.getByText(savedValues.body, { exact: true })).toBeVisible();
+  await expect(page.getByText(QA.ana.name, { exact: true })).toBeVisible();
   await expectApiError(await staff.api.request.patch(`/reports/${draft.id}`, { data: { title: 'Mudança proibida QA' } }), 409, 'REPORT_LOCKED');
   expect(await staff.api.report(appointment.id)).toEqual(published);
   await page.getByRole('link', { name: 'Voltar para agenda', exact: true }).click();

@@ -5,6 +5,7 @@ import { useAppSelector } from '../../app/hooks';
 export function RouteFocus() {
   const location = useLocation();
   const status = useAppSelector((state) => state.auth.status);
+  const isStaff = useAppSelector((state) => state.auth.session?.user.role === 'STAFF');
   useEffect(() => {
     let observer: MutationObserver | undefined;
     const focusHeading = () => {
@@ -12,7 +13,9 @@ export function RouteFocus() {
       if (!heading) return false;
       heading.setAttribute('tabindex', '-1');
       heading.focus({ preventScroll: true });
-      if (typeof heading.scrollIntoView === 'function') {
+      if (isStaff) {
+        (document.scrollingElement ?? document.documentElement).scrollTop = 0;
+      } else if (typeof heading.scrollIntoView === 'function') {
         heading.scrollIntoView({ block: 'start', behavior: 'instant' });
       }
       observer?.disconnect();
@@ -23,6 +26,6 @@ export function RouteFocus() {
       observer.observe(document.body, { childList: true, subtree: true });
     }
     return () => observer?.disconnect();
-  }, [location.key, status]);
+  }, [location.pathname, status, isStaff]);
   return null;
 }
