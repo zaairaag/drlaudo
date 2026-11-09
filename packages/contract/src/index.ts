@@ -76,8 +76,16 @@ export {
   PatientSchema,
   PatientSummarySchema,
   PatientListResponseSchema,
+  CreatePatientRequestSchema,
+  UpdatePatientRequestSchema,
 } from './schemas/patients.js';
-export type { Patient, PatientSummary, PatientListResponse } from './schemas/patients.js';
+export type {
+  Patient,
+  PatientSummary,
+  PatientListResponse,
+  CreatePatientRequest,
+  UpdatePatientRequest,
+} from './schemas/patients.js';
 
 export {
   ExamTypeSchema,

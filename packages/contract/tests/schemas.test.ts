@@ -165,6 +165,7 @@ describe('E1 E2 E7: envelopes diagnósticos canônicos e strict', () => {
     ['FORBIDDEN', 'Você não tem permissão para esta ação.'],
     ['NOT_FOUND', 'Não encontramos este registro'],
     ['SLOT_TAKEN', 'Este horário acabou de ser ocupado.'],
+    ['EMAIL_TAKEN', 'Este e-mail já está cadastrado.'],
     ['REPORT_EXISTS', 'Este agendamento já possui um laudo.'],
     ['REPORT_LOCKED', 'Este laudo foi publicado e não pode ser alterado.'],
     ['CANNOT_CANCEL', 'Este agendamento não pode ser cancelado.'],

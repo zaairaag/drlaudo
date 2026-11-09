@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const ErrorCodeSchema = z.enum([
   'VALIDATION_ERROR', 'UNAUTHORIZED', 'FORBIDDEN', 'NOT_FOUND', 'SLOT_TAKEN',
   'REPORT_EXISTS', 'REPORT_LOCKED', 'CANNOT_CANCEL', 'APPOINTMENT_CANCELED',
-  'PAST_DATE', 'INVALID_SLOT', 'RATE_LIMITED', 'INTERNAL_ERROR',
+  'PAST_DATE', 'INVALID_SLOT', 'RATE_LIMITED', 'INTERNAL_ERROR', 'EMAIL_TAKEN',
 ]);
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
 
@@ -13,6 +13,7 @@ export const ERROR_MESSAGES = Object.freeze({
   FORBIDDEN: 'Você não tem permissão para esta ação.',
   NOT_FOUND: 'Não encontramos este registro',
   SLOT_TAKEN: 'Este horário acabou de ser ocupado.',
+  EMAIL_TAKEN: 'Este e-mail já está cadastrado.',
   REPORT_EXISTS: 'Este agendamento já possui um laudo.',
   REPORT_LOCKED: 'Este laudo foi publicado e não pode ser alterado.',
   CANNOT_CANCEL: 'Este agendamento não pode ser cancelado.',
@@ -122,6 +123,7 @@ export const ErrorResponseSchema = z.strictObject({
     }),
     standardError('UNAUTHORIZED'), standardError('FORBIDDEN'), standardError('NOT_FOUND'),
     standardError('SLOT_TAKEN'), standardError('REPORT_EXISTS'), standardError('REPORT_LOCKED'),
+    standardError('EMAIL_TAKEN'),
     standardError('CANNOT_CANCEL'), standardError('APPOINTMENT_CANCELED'),
     standardError('PAST_DATE'), standardError('INVALID_SLOT'), standardError('RATE_LIMITED'),
     standardError('INTERNAL_ERROR'),
