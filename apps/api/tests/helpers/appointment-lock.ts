@@ -19,9 +19,24 @@ export interface AppointmentLock {
   release(): Promise<void>;
 }
 
-/** Only the independent blocker is in this transaction, never an HTTP request. */
-export async function withAppointmentLock(
+export function withAppointmentLock(
   appointmentId: string,
+  run: (lock: AppointmentLock) => Promise<void>,
+): Promise<void> {
+  return withRowLock('Appointment', appointmentId, run);
+}
+
+export function withUserLock(
+  userId: string,
+  run: (lock: AppointmentLock) => Promise<void>,
+): Promise<void> {
+  return withRowLock('User', userId, run);
+}
+
+/** Only the independent blocker is in this transaction, never an HTTP request. */
+async function withRowLock(
+  table: 'Appointment' | 'User',
+  id: string,
   run: (lock: AppointmentLock) => Promise<void>,
 ): Promise<void> {
   const config = { connectionString: testDatabaseUrl(), connectionTimeoutMillis: 5_000 };
@@ -38,9 +53,12 @@ export async function withAppointmentLock(
     const blockerPid = identity.rows[0]?.pid;
     if (blockerPid === undefined) throw new Error('PostgreSQL não informou o PID bloqueador.');
     const locked = await blocker.query<{ id: string }>(
-      'SELECT id FROM "Appointment" WHERE id = $1::uuid FOR UPDATE', [appointmentId],
+      table === 'Appointment'
+        ? 'SELECT id FROM "Appointment" WHERE id = $1::uuid FOR UPDATE'
+        : 'SELECT id FROM "User" WHERE id = $1::uuid FOR UPDATE',
+      [id],
     );
-    if (locked.rows.length !== 1) throw new Error('Agendamento de controle inexistente.');
+    if (locked.rows.length !== 1) throw new Error('Recurso de controle inexistente.');
 
     await run({
       blockerPid,
@@ -72,15 +90,14 @@ export async function withAppointmentLock(
             JOIN blocked ON blocked.pid = activity.pid
             WHERE activity.pid <> $1::integer
               AND activity.wait_event_type = 'Lock'
-              AND activity.query ILIKE '%FOR UPDATE%'
-              AND activity.query LIKE '%"Appointment"%'
+              AND activity.query LIKE $2
             ORDER BY activity.pid
-          `, [blockerPid]);
+          `, [blockerPid, `%"${table}"%`]);
           observed = result.rows;
           if (observed.length >= count) return observed;
           await setImmediate();
         } while (performance.now() < deadline);
-        throw new Error(`Esperados ${count} FOR UPDATE em espera; observados ${JSON.stringify(observed)}.`);
+        throw new Error(`Esperadas ${count} mutações em espera; observadas ${JSON.stringify(observed)}.`);
       },
       async release() {
         if (transactionOpen) {

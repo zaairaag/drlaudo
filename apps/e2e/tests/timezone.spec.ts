@@ -19,7 +19,7 @@ test('RN-25/TEMPO-07 · navegador e processo em Tóquio mantêm data/hora de Bra
   await expect(staff.page.getByLabel('Data', { exact: true })).toHaveValue(scenario.date);
   await expect(staff.page.getByLabel('Paciente', { exact: true })).toHaveValue(QA.ana.id);
   await staff.page.goto(reportHref(appointment.id, scenario.date, QA.ana.id));
-  await expect(staff.page.getByText(`${displayDate(scenario.date)} às 10:00`, { exact: true })).toBeVisible();
+  await expect(staff.page.getByRole('region', { name: 'Identificação do exame' }).locator(`time[datetime="${appointment.startsAt}"]`)).toHaveText(`${displayDate(scenario.date)} às 10:00`);
   await staff.page.getByRole('link', { name: 'Voltar para agenda', exact: true }).click();
   await expect(staff.page).toHaveURL((url) => url.searchParams.get('date') === scenario.date && url.searchParams.get('patientId') === QA.ana.id);
   await ana.page.goto(`/meus-exames/${appointment.id}/laudo`);

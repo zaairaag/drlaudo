@@ -12,7 +12,7 @@ Abra a demo online acima, selecione um perfil demonstrativo e clique em **Entrar
 
 Na agenda, selecione **10/11/2026** para consultar a massa inicial desta implantação. O seed é idempotente e não desloca datas; como as contas são públicas, alterações feitas por visitantes podem mudar a demonstração.
 
-Para consultar o histórico completo da equipe, clique em **Ver todos os agendamentos**. O filtro **Paciente** continua disponível; a lista mostra a data e o horário de cada exame. Para voltar à agenda diária, escolha uma data ou clique em **Hoje**. O modo e o paciente são preservados ao abrir e voltar de um laudo. O portal do paciente continua mostrando apenas seu próprio histórico.
+A equipe entra no **Calendário**. Alterne entre **Dia**, **Calendário** e **Linha do tempo**; o filtro **Paciente** acompanha a seleção. O calendário reúne mês e exames do dia, e a linha do tempo mostra todos os períodos agrupados por mês. “Data passada”, “Hoje” e “Próximo exame” indicam a data agendada, não presença confirmada. Ao sair de um laudo ou abandonar um novo agendamento, o contexto de origem é preservado. Em **Pacientes**, **Ver exames** abre o histórico individual; editar e desativar continuam disponíveis. O portal segue restrito ao histórico próprio.
 
 ## Executar com Docker
 
@@ -144,7 +144,7 @@ As provas adicionais abrangem transações/locks, corridas, imutabilidade, rollb
 - Cancelar/criar/editar/publicar laudo trava primeiro Appointment com `FOR UPDATE` e relê na mesma transação. Não há CANCELED com PUBLISHED.
 - Um laudo por exame; rascunho editável só pela equipe; publicado é imutável. Publicação exige rascunho salvo e confirmação.
 - `/me/*` filtra identidade do token; alheio/inexistente/sem laudo/rascunho usam o mesmo 404. DTOs não expõem hash ou metadados internos.
-- Administração de pacientes é complemento autorizado: criação com senha inicial e edição de nome/e-mail, sem exclusão, mudança de perfil ou reset de senha.
+- Administração de pacientes: criação com senha inicial, edição de nome/e-mail e desativação/reativação. Inativos não acessam o portal nem recebem novos agendamentos; exames e laudos ficam preservados para a equipe. Sem exclusão física, mudança de perfil ou reset de senha.
 
 ## Documentação e limitações
 

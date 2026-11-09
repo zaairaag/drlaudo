@@ -111,6 +111,41 @@ afterEach(() => {
 });
 
 describe('Retorno contextual à agenda', () => {
+  it.each(['DRAFT', 'PUBLISHED', 'CANCELED'] as const)('identifica paciente, exame e horário na leitura STAFF %s', async (state) => {
+    const report = state === 'PUBLISHED' ? basePublishedReport : baseDraftReport;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report') ? jsonResponse(report) : jsonResponse({
+        ...baseAppointment,
+        status: state === 'CANCELED' ? 'CANCELED' : 'SCHEDULED',
+        report: { id: report.id, status: report.status },
+      }),
+    );
+    setupReportHarness();
+    if (state === 'DRAFT') await screen.findByDisplayValue(baseDraftReport.title);
+    else await screen.findByRole('heading', { level: 2, name: report.title });
+    expect(await screen.findByText(baseAppointment.patient.name)).toBeVisible();
+    for (const item of screen.getAllByText(baseAppointment.examType.name)) expect(item).toBeVisible();
+    for (const item of screen.getAllByText('10/11/2026 às 10:00')) expect(item).toBeVisible();
+    if (state !== 'DRAFT') {
+      expect(screen.queryByRole('button', { name: 'Salvar rascunho' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Publicar' })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each([404, 500])('identifica o agendamento confirmado quando a leitura do laudo falha com %s', async (status) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
+      String(url).endsWith('/report')
+        ? errorResponse(status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', 'Não foi possível concluir a solicitação.', status)
+        : jsonResponse({ ...baseAppointment, report: { id: baseDraftReport.id, status: 'DRAFT' } }),
+    );
+    setupReportHarness();
+    await screen.findByText('Inconsistência na recuperação do laudo. Não foi possível carregar os dados.');
+    expect(screen.getByText(baseAppointment.patient.name)).toBeVisible();
+    expect(screen.getByText(baseAppointment.examType.name)).toBeVisible();
+    expect(screen.getByText('10/11/2026 às 10:00')).toBeVisible();
+    expect(screen.queryByLabelText('Título')).not.toBeInTheDocument();
+  });
+
   it.each(['DRAFT', 'PUBLISHED', 'CANCELED'] as const)('preserva data/paciente ao voltar de %s', async (state) => {
     const report = state === 'PUBLISHED' ? basePublishedReport : baseDraftReport;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) =>
@@ -392,9 +427,9 @@ describe('S4 / T18 / T19 · ReportPage: Recuperação, reconciliação e context
 
     setupReportHarness();
 
-    expect(await screen.findByText('Ana Souza')).toBeVisible();
+    expect(await screen.findByLabelText('Título')).toHaveValue('');
+    expect(screen.getByText('Ana Souza')).toBeVisible();
     expect(screen.getByText('Raio-X de tórax')).toBeVisible();
-    expect(screen.getByLabelText('Título')).toHaveValue('');
     expect(screen.getByLabelText('Texto do laudo')).toHaveValue('');
     expect(screen.getByLabelText('Profissional responsável')).toHaveValue('');
     expect(screen.getByRole('button', { name: 'Salvar rascunho' })).toBeVisible();
@@ -1329,6 +1364,31 @@ describe('S4 / E3 / E4 · Conflitos concorrentes, reconciliação e recarregar',
 });
 
 describe('S4 / S6 · Troca de id na rota', () => {
+  it.each([404, 500])('não exibe o paciente anterior enquanto outro id carrega ou falha com %s', async (status) => {
+    const nextId = '30000000-0000-4000-8000-000000000099';
+    const nextAppointment = Promise.withResolvers<Response>();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith(`/appointments/${baseAppointment.id}`)) {
+        return jsonResponse({ ...baseAppointment, report: { id: basePublishedReport.id, status: 'PUBLISHED' } });
+      }
+      if (path.endsWith(`/appointments/${baseAppointment.id}/report`)) return jsonResponse(basePublishedReport);
+      if (path.endsWith(`/appointments/${nextId}`)) return nextAppointment.promise;
+      return errorResponse('NOT_FOUND', 'Não encontramos este registro', 404);
+    });
+    const { router } = setupReportHarness();
+    await screen.findByRole('heading', { level: 2, name: basePublishedReport.title });
+    expect(await screen.findByText(baseAppointment.patient.name)).toBeVisible();
+    await router.navigate(`/agendamentos/${nextId}/laudo`);
+    await screen.findByText('Carregando agendamento…');
+    expect(screen.queryByText(baseAppointment.patient.name)).not.toBeInTheDocument();
+    nextAppointment.resolve(errorResponse(
+      status === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR', status === 404 ? 'Não encontramos este registro' : 'Não foi possível concluir a solicitação.', status,
+    ));
+    await screen.findByText(status === 404 ? 'Não encontramos este registro' : 'Algo deu errado. Tente novamente em instantes.');
+    expect(screen.queryByText(baseAppointment.patient.name)).not.toBeInTheDocument();
+  });
+
   it('trocar o id da rota limpa o conteúdo anterior e carrega o novo agendamento', async () => {
     const secondAppointment: StaffAppointment = {
       ...baseAppointment,

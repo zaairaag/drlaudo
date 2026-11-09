@@ -65,6 +65,25 @@ describe('transporte validado /api', () => {
     expect(JSON.stringify(store.getState().api)).not.toContain('SENTINELA-NAO-EXIBIR');
   });
 
+  it.each([true, false])('valida atividade %s em listagem, cadastro e edição sem alterar DTO de sessão', async (active) => {
+    const patient = { ...appointment.patient, email: 'ana.souza@drlaudo.test', active };
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (String(url) === '/api/patients' && init?.method === 'GET') return respond([patient]);
+      return respond(init?.method === 'POST' ? { ...patient, active: true } : patient, init?.method === 'POST' ? 201 : 200);
+    });
+    const store = staffStore();
+    expect(await store.dispatch(api.endpoints.getPatients.initiate()).unwrap()).toEqual([patient]);
+    expect(await store.dispatch(api.endpoints.createPatient.initiate({ name: patient.name, email: patient.email, password: 'Senha@123' })).unwrap()).toEqual({ ...patient, active: true });
+    expect(await store.dispatch(api.endpoints.updatePatient.initiate({ id: patient.id, active })).unwrap()).toEqual(patient);
+    const patch = fetch.mock.calls.find(([, init]) => init?.method === 'PATCH');
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ active });
+    expect(store.getState().auth.session?.user).not.toHaveProperty('active');
+  });
+
+  it('rejeita catálogo sem active em vez de tratar paciente como ativo por omissão', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(respond([{ ...appointment.patient, email: 'ana.souza@drlaudo.test' }]));
+    await expect(staffStore().dispatch(api.endpoints.getPatients.initiate()).unwrap()).rejects.toMatchObject({ status: 500, data: internalError });
+  });
   it('erro HTTP inválido torna-se falha interna segura', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(respond({ stack: 'SENTINELA-STACK' }, 500));
     await expect(staffStore().dispatch(api.endpoints.getPatients.initiate()).unwrap()).rejects.toMatchObject({ status: 500, data: internalError });

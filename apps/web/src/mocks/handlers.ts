@@ -119,7 +119,7 @@ function authenticateRequest(request: Request, db: MockDb, clock: Clock, nowIso?
     return { ok: false, response: errorResponse('UNAUTHORIZED', 401) };
   }
   const user = db.users.find((u) => u.id === claims.sub);
-  if (!user || user.role !== claims.role || user.name !== claims.name) {
+  if (!user || !user.active || user.role !== claims.role || user.name !== claims.name) {
     return { ok: false, response: errorResponse('UNAUTHORIZED', 401) };
   }
   return { ok: true, user: { id: user.id, name: user.name, email: user.email, role: user.role } };
@@ -351,7 +351,7 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
       const emailNorm = (loginBody['email'] as string).trim().toLowerCase();
       const password = loginBody['password'] as string;
       const user = db.users.find((u) => u.email.toLowerCase() === emailNorm && u.password === password);
-      if (!user) return errorResponse('UNAUTHORIZED', 401);
+      if (!user || !user.active) return errorResponse('UNAUTHORIZED', 401);
 
       const token = generateSimulatedToken(user, clock);
       return jsonResponse({
@@ -394,7 +394,7 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
 
       const patients = db.users
         .filter((u) => u.role === 'PATIENT')
-        .map((u) => ({ id: u.id, name: u.name, email: u.email }))
+        .map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active }))
         .sort((a, b) => {
           const cmp = compareStringsByCodePoint(a.name, b.name);
           return cmp !== 0 ? cmp : compareStringsByCodePoint(a.id, b.id);
@@ -418,7 +418,7 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
       if (issues.length > 0) return validationErrorResponse(issues);
       if (!body.ok) return errorResponse('INTERNAL_ERROR', 500);
       if (db.users.some((user) => user.email === body.data.email)) return errorResponse('EMAIL_TAKEN', 409);
-      const patient = PatientSchema.safeParse({ id: crypto.randomUUID(), name: body.data.name, email: body.data.email });
+      const patient = PatientSchema.safeParse({ id: crypto.randomUUID(), name: body.data.name, email: body.data.email, active: true });
       if (!patient.success) return errorResponse('INTERNAL_ERROR', 500);
       db.users.push({ ...patient.data, role: 'PATIENT', password: body.data.password, createdAt: clock.now().toISOString() });
       db.persist();
@@ -444,10 +444,14 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
       const patient = db.users.find((user) => user.id === id.data && user.role === 'PATIENT');
       if (!patient) return notFoundResponse();
       if (body.data.email !== undefined && db.users.some((user) => user.id !== patient.id && user.email === body.data.email)) return errorResponse('EMAIL_TAKEN', 409);
-      const output = PatientSchema.safeParse({ id: patient.id, name: body.data.name ?? patient.name, email: body.data.email ?? patient.email });
+      const output = PatientSchema.safeParse({
+        id: patient.id, name: body.data.name ?? patient.name, email: body.data.email ?? patient.email,
+        active: body.data.active ?? patient.active,
+      });
       if (!output.success) return errorResponse('INTERNAL_ERROR', 500);
       patient.name = output.data.name;
       patient.email = output.data.email;
+      patient.active = output.data.active;
       db.persist();
       return jsonResponse(output.data);
     }),
@@ -620,7 +624,7 @@ export function createHandlers({ db, clock, latency }: HandlersOptions): HttpHan
 
       const patient = db.users.find((u) => u.id === patientIdVal && u.role === 'PATIENT');
       const examType = db.examTypes.find((e) => e.id === examTypeIdVal);
-      if (!patient || !examType) return errorResponse('NOT_FOUND', 404);
+      if (!patient?.active || !examType) return errorResponse('NOT_FOUND', 404);
 
       if (!isValidSlot(startsAtVal!)) return errorResponse('INVALID_SLOT', 422);
 

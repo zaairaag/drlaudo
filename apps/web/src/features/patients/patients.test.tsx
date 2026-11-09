@@ -10,8 +10,8 @@ import { createAppStore, type AppStore } from '../../app/store';
 import { appointment, makeSession } from '../../app/testFixtures';
 import { createAppRouter } from '../../router';
 
-const patient = { ...appointment.patient, email: 'ana.souza@drlaudo.test' };
-const createdPatient = { id: '10000000-0000-4000-8000-000000000099', name: 'Carla Lima', email: 'carla@drlaudo.test' };
+const patient = { ...appointment.patient, email: 'ana.souza@drlaudo.test', active: true };
+const createdPatient = { id: '10000000-0000-4000-8000-000000000099', name: 'Carla Lima', email: 'carla@drlaudo.test', active: true };
 const resources: { store: AppStore; dispose: () => void }[] = [];
 function openPatients(role: 'STAFF' | 'PATIENT' = 'STAFF') {
   const store = createAppStore();
@@ -180,6 +180,93 @@ describe('administração de pacientes STAFF pelo router de produto', () => {
     await user.click(retry);
     expect(await screen.findByText(patient.email)).toBeVisible();
     expect(screen.getByRole('button', { name: 'Novo paciente' })).toBeEnabled();
+  });
+
+  it('preserva pacientes inativos na gestão e dá acesso aos exames com filtro completo', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([{ ...patient, active: false }]));
+    const { user, router } = openPatients();
+    await screen.findByText(patient.email);
+    const row = screen.getByText(patient.email).closest('li')!;
+    expect(within(row).getByText('Inativo')).toBeVisible();
+    expect(within(row).getByRole('button', { name: 'Editar paciente' })).toBeEnabled();
+    expect(within(row).getByRole('button', { name: 'Reativar paciente' })).toBeEnabled();
+    await user.click(within(row).getByRole('link', { name: 'Ver exames' }));
+    expect(router.state.location.pathname).toBe('/agenda');
+    expect(router.state.location.search).toBe(`?scope=all&patientId=${patient.id}`);
+  });
+
+  it.each([true, false])('desistir de alterar atividade %s não envia PATCH e restaura foco', async (active) => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([{ ...patient, active }]));
+    const { user } = openPatients();
+    await screen.findByText(patient.email);
+    const action = active ? 'Desativar paciente' : 'Reativar paciente';
+    const trigger = screen.getByRole('button', { name: action });
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent(patient.name);
+    expect(dialog).toHaveTextContent(/histórico/i);
+    expect(dialog).toHaveTextContent(/acesso|entrar/i);
+    expect(dialog).toHaveTextContent(/agendamento/i);
+    expect(within(dialog).getByRole('button', { name: 'Voltar' })).toHaveFocus();
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Voltar' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(0);
+  });
+
+  it.each([true, false])('confirma atividade %s uma única vez, preserva a linha e atualiza status textual', async (active) => {
+    const pending = Promise.withResolvers<Response>();
+    let current = { ...patient, active };
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => init?.method === 'PATCH' ? pending.promise : Response.json([current]));
+    const { user } = openPatients();
+    await screen.findByText(patient.email);
+    const row = screen.getByText(patient.email).closest('li')!;
+    const action = active ? 'Desativar paciente' : 'Reativar paciente';
+    await user.click(within(row).getByRole('button', { name: action }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.dblClick(within(dialog).getByRole('button', { name: action }));
+    expect(within(dialog).getByRole('button', { name: 'Voltar' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(screen.queryByText(active ? 'Paciente desativado.' : 'Paciente reativado.')).not.toBeInTheDocument();
+    const writes = fetch.mock.calls.filter(([, init]) => init?.method === 'PATCH');
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.[0]).toBe(`/api/patients/${patient.id}`);
+    expect(JSON.parse(String(writes[0]?.[1]?.body))).toEqual({ active: !active });
+    current = { ...current, active: !active };
+    await act(async () => pending.resolve(Response.json(current)));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(await within(row).findByText(active ? 'Inativo' : 'Ativo')).toBeVisible();
+    expect(within(row).getByRole('button', { name: active ? 'Reativar paciente' : 'Desativar paciente' })).toHaveFocus();
+    expect(screen.getByRole('status')).toHaveTextContent(active ? 'Paciente desativado.' : 'Paciente reativado.');
+    expect(row).toHaveAttribute('data-patient-id', patient.id);
+    expect(within(row).getByRole('link', { name: 'Ver exames' })).toHaveAttribute('href', `/agenda?scope=all&patientId=${patient.id}`);
+  });
+
+  it.each([true, false])('erro ao alterar atividade %s mantém confirmação aberta e não anuncia sucesso', async (active) => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => init?.method === 'PATCH'
+      ? Response.json({ error: { code: 'INTERNAL_ERROR', message: 'Não foi possível concluir a solicitação.' } }, { status: 500 })
+      : Response.json([{ ...patient, active }]));
+    const { user } = openPatients();
+    await screen.findByText(patient.email);
+    const action = active ? 'Desativar paciente' : 'Reativar paciente';
+    await user.click(screen.getByRole('button', { name: action }));
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(within(dialog).getByRole('button', { name: action }));
+    expect(await within(dialog).findByRole('alert')).toBeVisible();
+    expect(within(dialog).getByRole('button', { name: action })).toBeEnabled();
+    expect(screen.queryByText('Paciente desativado.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Paciente reativado.')).not.toBeInTheDocument();
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'PATCH')).toHaveLength(1);
+    await user.click(within(dialog).getByRole('button', { name: 'Voltar' }));
+    const row = screen.getByText(patient.email).closest('li')!;
+    expect(within(row).getByText(active ? 'Ativo' : 'Inativo')).toBeVisible();
   });
 
   it('paciente não recebe navegação nem consulta administrativa ao abrir /pacientes', async () => {

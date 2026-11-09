@@ -1,6 +1,7 @@
 import { CalendarClock, CalendarPlus, FileText, LogOut, UsersRound, User as UserIcon } from 'lucide-react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import { useSession } from '../../app/session';
+import { appointmentCreationHref } from '../../app/navigation';
 import { Logo } from '../brand/Logo';
 import { Button } from '../ui/button';
 import { AppFooter } from './AppFooter';
@@ -15,8 +16,11 @@ const navigationClassName = ({ isActive }: { isActive: boolean }) =>
 
 export function AppShell() {
   const { user, logout } = useSession();
+  const location = useLocation();
   const isStaff = user?.role === 'STAFF';
   const roleWidth = isStaff ? 'max-w-7xl' : 'max-w-4xl';
+  const creationHref = isStaff && location.pathname === '/agenda'
+    ? appointmentCreationHref(location.pathname + location.search) : '/agendamentos/novo';
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground lg:pl-60">
@@ -48,7 +52,7 @@ export function AppShell() {
                 <CalendarClock className="size-4 shrink-0" aria-hidden="true" />
                 <span>Agenda</span>
               </NavLink>
-              <NavLink to="/agendamentos/novo" className={navigationClassName} aria-label="Novo agendamento">
+              <NavLink to={creationHref} className={navigationClassName} aria-label="Novo agendamento">
                 <CalendarPlus className="size-4 shrink-0" aria-hidden="true" />
                 <span className="lg:hidden" aria-hidden="true">Agendar</span>
                 <span className="hidden lg:inline" aria-hidden="true">Novo agendamento</span>

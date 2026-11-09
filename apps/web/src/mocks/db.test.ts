@@ -8,10 +8,10 @@ const NOW = '2026-11-10T12:00:00.000Z';
 describe('snapshot fictício por aba', () => {
   it('creates exactly the canonical three users, three exams, five appointments and two reports', () => {
     const db = createMockDb({ clock: createTestClock(NOW) });
-    expect(db.users.map(({ id, name, email, role }) => ({ id, name, email, role }))).toEqual([
-      { id: '10000000-0000-4000-8000-000000000001', name: 'Equipe Dr. Laudo', email: 'equipe@drlaudo.test', role: 'STAFF' },
-      { id: '10000000-0000-4000-8000-000000000002', name: 'Ana Souza', email: 'ana.souza@drlaudo.test', role: 'PATIENT' },
-      { id: '10000000-0000-4000-8000-000000000003', name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test', role: 'PATIENT' },
+    expect(db.users.map(({ id, name, email, role, active }) => ({ id, name, email, role, active }))).toEqual([
+      { id: '10000000-0000-4000-8000-000000000001', name: 'Equipe Dr. Laudo', email: 'equipe@drlaudo.test', role: 'STAFF', active: true },
+      { id: '10000000-0000-4000-8000-000000000002', name: 'Ana Souza', email: 'ana.souza@drlaudo.test', role: 'PATIENT', active: true },
+      { id: '10000000-0000-4000-8000-000000000003', name: 'Bruno Lima', email: 'bruno.lima@drlaudo.test', role: 'PATIENT', active: true },
     ]);
     expect(db.examTypes).toEqual([
       { id: '20000000-0000-4000-8000-000000000001', code: 'XRAY', name: 'Raio-X de tórax' },
@@ -53,6 +53,58 @@ describe('snapshot fictício por aba', () => {
     expect(restored.reports).toEqual(first.reports);
     expect(restored.users).toEqual(first.users);
     expect(setItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('restaura atividade persistida sem reativar paciente ou reinicializar histórico', () => {
+    const storage = createMemoryStorage();
+    const clock = createTestClock(NOW);
+    const first = createMockDb({ clock, storage });
+    const patient = first.users.find(({ role }) => role === 'PATIENT');
+    if (!patient) throw new Error('Missing arranged patient');
+    patient.active = false;
+    first.persist();
+    const before = storage.getItem(MOCK_SNAPSHOT_KEY);
+    clock.set('2026-12-01T15:00:00.000Z');
+    const restored = createMockDb({ clock, storage });
+    expect(restored.users).toEqual(first.users);
+    expect(restored.appointments).toEqual(first.appointments);
+    expect(restored.reports).toEqual(first.reports);
+    expect(storage.getItem(MOCK_SNAPSHOT_KEY)).toBe(before);
+  });
+
+  it('carrega snapshot anterior à atividade como ativo sem apagar dados ou regravar na leitura', () => {
+    const storage = createMemoryStorage();
+    const clock = createTestClock(NOW);
+    const first = createMockDb({ clock });
+    const legacy = JSON.stringify({
+      version: 1,
+      users: first.users.map(({ id, name, email, role, password, createdAt }) => ({ id, name, email, role, password, createdAt })),
+      examTypes: first.examTypes, appointments: first.appointments,
+      reports: first.reports.map(({ createdAt, ...dto }) => ({ createdAt, dto })),
+    });
+    storage.setItem(MOCK_SNAPSHOT_KEY, legacy);
+    clock.set('2026-12-01T15:00:00.000Z');
+    const restored = createMockDb({ clock, storage });
+    expect(restored.snapshotStatus).toBe('saved');
+    expect(restored.users).toEqual(first.users);
+    expect(restored.users.every(({ active }) => active === true)).toBe(true);
+    expect(restored.appointments).toEqual(first.appointments);
+    expect(restored.reports).toEqual(first.reports);
+    expect(storage.getItem(MOCK_SNAPSHOT_KEY)).toBe(legacy);
+  });
+
+  it.each([null, 'false', 0])('rejeita atividade persistida inválida sem sobrescrever snapshot: %j', (active) => {
+    const storage = createMemoryStorage();
+    const clock = createTestClock(NOW);
+    const first = createMockDb({ clock });
+    const invalid = JSON.stringify({
+      version: 1, users: first.users.map((user) => ({ ...user, active })),
+      examTypes: first.examTypes, appointments: first.appointments,
+      reports: first.reports.map(({ createdAt, ...dto }) => ({ createdAt, dto })),
+    });
+    storage.setItem(MOCK_SNAPSHOT_KEY, invalid);
+    expect(createMockDb({ clock, storage }).snapshotStatus).toBe('invalid');
+    expect(storage.getItem(MOCK_SNAPSHOT_KEY)).toBe(invalid);
   });
 
   it('isolates independent tab storages', () => {

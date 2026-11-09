@@ -42,7 +42,7 @@ Título, corpo e profissional recebem trim nativo JavaScript **antes** dos limit
 | `NoBodySchema` | Ausência HTTP, não objeto JSON (§1). |
 | `IdParamsSchema` | `id: UUID`; identifica paciente, agendamento ou laudo conforme a rota, sem converter recursos. |
 | `UserSchema` | `id: UUID`, `name: string` não vazia, `email: Email`, `role: Role`. |
-| `PatientSchema` | `id: UUID`, `name: string` não vazia, `email: Email`; somente usuário PATIENT no banco, sem role no DTO. |
+| `PatientSchema` | `id: UUID`, `name: string` não vazia, `email: Email`, `active: boolean`; somente PATIENT, sem role/hash no DTO. |
 | `PatientSummarySchema` | `id: UUID`, `name: string` não vazia. |
 | `ExamTypeSchema` | `id: UUID`, `code: ExamTypeCode`, `name: string` não vazia. |
 | `ExamTypeSummarySchema` | `id: UUID`, `name: string` não vazia. |
@@ -64,7 +64,7 @@ Título, corpo e profissional recebem trim nativo JavaScript **antes** dos limit
 | `JwtClaimsSchema` | `sub: UUID`, `role: Role`, `name: string` não vazia, `iss: "drlaudo-api"`, `iat: number` inteiro seguro não negativo (segundos Unix), `exp: number` inteiro seguro com `exp = iat + 28800`. Sem outros claims; payload JWT, não resposta HTTP. |
 | `PatientListResponseSchema` | `Patient[]`, inclusive vazio. |
 | `CreatePatientRequestSchema` | `name: string` 3…120 unidades UTF-16 após trim; `email: Email`; `password: string` literal com mínimo 8 unidades UTF-16 e máximo 72 bytes UTF-8. Sem id/role/hash/datas. |
-| `UpdatePatientRequestSchema` | `name?` e `email?`, mesmos limites/normalização da criação; pelo menos um campo presente. Omissão preserva valor; null, password, role e campos desconhecidos são recusados. |
+| `UpdatePatientRequestSchema` | `name?`, `email?` e `active?: boolean`; pelo menos um campo presente. Omissão preserva valor; null, undefined presente, password, role e desconhecidos são recusados. |
 | `ExamTypeListResponseSchema` | `ExamType[]`, inclusive vazio; sem restrição de comprimento no DTO. Os três códigos do catálogo fixo pertencem ao seed. |
 | `SlotQuerySchema` | `date: LocalDate` obrigatório. |
 | `SlotsResponseSchema` | `date: LocalDate`, `timezone: "America/Sao_Paulo"`, `slots: Slot[]`; inícios distintos, ordenados e correspondentes à grade desse dia. São 24 em dias normais; omitir posições civis inexistentes em transições históricas IANA (§4.1). |
@@ -143,14 +143,16 @@ API verifica conexão com `SELECT 1`; MSW só simula. Sucesso `{"status":"ok","d
 Retorna User diretamente, sem wrapper/lista ou seleção de outro usuário; usuário do token removido → 401 canônico.
 
 ### 5.4 `GET /patients`
-Somente usuários PATIENT, sem role no DTO; ordenação §4.2.
+Somente usuários PATIENT, ativos e inativos, sem role no DTO; ordenação §4.2. O catálogo completo atende gestão/histórico; somente ativos são oferecidos no formulário de novo agendamento.
 
 #### Cadastro e edição administrativos
-`POST /patients` cria sempre PATIENT, com UUID novo e bcrypt custo 10; a senha não sofre trim ou alteração. O limite de 72 bytes UTF-8 é verificado antes do hash, evitando truncamento silencioso. Retorno contém somente id/nome/e-mail; senha, hash e role não são enviados. Sem cadastro público.
+`POST /patients` cria sempre PATIENT ativo, com UUID novo e bcrypt custo10. Não aceita active no input. A senha não sofre trim/alteração, máximo72bytesUTF-8 antes do hash. Retorna id/nome/e-mail/active; sem senha/hash/role. Sem cadastro público.
 
-`PATCH /patients/:id` altera somente nome/e-mail de uma identidade PATIENT existente. ID inexistente ou de STAFF gera o mesmo 404. Preservar id, role, hash, createdAt e todos os vínculos de agendamentos/laudos. PATCH vazio gera EMPTY_PATCH; o formato é validado antes da existência.
+`PATCH /patients/:id` altera nome/e-mail e/ou atividade de PATIENT. ID inexistente ou de STAFF →404. Preservar id, role, hash, createdAt e vínculos; atualizar active não cancela exames nem bloqueia trabalho STAFF nos laudos existentes. PATCH vazio →EMPTY_PATCH; formato antes de existência. `active:false` desativa e `active:true` reativa com a mesma senha.
 
 E-mail é único entre todas as contas. Conflito real de `User.email` na criação/edição gera `409 EMAIL_TAKEN`; não sobrescrever a conta concorrente nem classificar outra falha Prisma como esse conflito. DTO é validado ainda na transação antes do commit. Listas e seletores recebem os valores atualizados.
+
+Paciente inativo: login retorna401 genérico, inclusive senha correta; verificação do usuário persistido em cada rota autenticada rejeita o token nas próximas requisições com401. Não há promessa de abortar requisição já autorizada/em curso. Reativar permite autenticação novamente. STAFF continua acessando histórico. Criar exame para inativo usa404NOT_FOUND sem insert; a criação e desativação serializam na linha User dentro da transação, sem substituir o índice parcial que arbitra slots. DTOs de sessão/JWT e de agendamentos não recebem active.
 
 ### 5.5 `GET /exam-types`
 Catálogo fixo sem alteração: XRAY/“Raio-X de tórax”, MRI/“Ressonância de crânio”, ULTRASOUND/“Ultrassonografia de abdome”, nessa ordem por nome. IDs demo em ARCHITECTURE.
@@ -203,7 +205,7 @@ User é identidade; Appointment.patientId referencia PATIENT; ExamType é catál
 | Criar laudo | Transação interativa; `SELECT id FROM "Appointment" WHERE id = $1::uuid FOR UPDATE` com parâmetro vinculado; reler status/laudo na mesma transação. Unique Report.appointmentId; P2002 **dessa chave** → 409 REPORT_EXISTS. |
 | Cancelar | Mesma trava/transação, validar SCHEDULED/ausência de PUBLISHED após releitura; gravar CANCELED/canceledAt = now, preservar rascunho intocado. Slot libera só no commit. |
 | Editar/publicar | Resolver appointmentId sem mudar vínculo; travar primeiro Appointment e reler ambos na transação antes de estado/escrita. Sem reparenting/deleção nem confiar na leitura pré-trava. |
-Todas usam ordem **Appointment primeiro**, não trava exclusiva só de Report; READ COMMITTED basta. Transação curta, sem chamada externa/espera de UI; sucesso só após commit, falha reverte tudo. Não introduzir SERIALIZABLE/retry automático/fila. P2002 desconhecido → 500 sanitizado, não conflito genérico.
+Criar/editar/publicar laudo e cancelar agendamento usam ordem **Appointment primeiro**, não trava exclusiva só de Report; criar agendamento trava **User** para serializar com a desativação administrativa. READ COMMITTED basta. Transação curta, sem chamada externa/espera de UI; sucesso só após commit, falha reverte tudo. Não introduzir SERIALIZABLE/retry automático/fila. P2002 desconhecido → 500 sanitizado, não conflito genérico.
 - Cancelar × publicar: cancelar vence → APPOINTMENT_CANCELED; publicar vence → CANNOT_CANCEL; nunca CANCELED + PUBLISHED.
 - Editar × publicar: edição anterior pode ser incorporada; publicação anterior → REPORT_LOCKED na edição. Criar laudo × cancelar: DRAFT nasce e é preservado/bloqueado, ou criação falha ao reler CANCELED; nunca criar após observá-lo na seção crítica.
 - Sem chave de idempotência: repetição de criação sujeita a índice/unique; cancel/publish seguem conflitos. Após transporte incerto, refazer leituras antes de nova tentativa, sem retry automático de mutação.
@@ -215,11 +217,13 @@ MSW executa os mesmos schemas/códigos/filtros/normalizações/estados, mas toke
 Segredos JWT/URLs de banco são externos; repositório só nomes/exemplos sanitizados. Logs estruturados: reqId, método, rota parametrizada, status, duração e ErrorCode; redaction de Authorization/senha/token, sem corpo clínico. Health não expõe topologia. Taxa/erro/latência pelos logs bastam à demo; sem SLA numérico ou demanda de tracing distribuído/réplica/partição/Redis. Operação detalhada em ARCHITECTURE.
 
 ### 6.3 Sessão e cache no frontend
-- Persistir só LoginResponse em localStorage `drlaudo.session`, não RTK Query/listas/laudos/formulários clínicos. Logout local apaga sessão; sem endpoint/revogação, JWT continua válido até 8 h. No F5 validar estrutura + `/auth/me` antes de telas/consultas privadas; decode sub/role é UX, não autorização.
+- Persistir só LoginResponse em localStorage `drlaudo.session`, não RTK Query/listas/laudos/formulários clínicos. Logout local apaga sessão; sem endpoint de revogação por logout, o JWT pode autenticar por até 8 h enquanto a conta estiver ativa. Desativação é verificada no banco em cada nova requisição autenticada e retorna 401. No F5 validar estrutura + `/auth/me` antes de telas/consultas privadas; decode sub/role é UX, não autorização.
 - Inválida/expirada ou 401: limpar/ir ao login. Rede/500 ao validar sessão: erro com retry, sem dados privados antigos ou supor login válido. Logout/troca/substituição de sessão/evento storage: abortar/ignorar requests anteriores, limpar seleção/filtros/formulários, `api.util.resetApiState()`; resposta tardia não repovoa cache/tela, nem cache STAFF atende portal.
 - Tags: `Appointment`, `Slot`, `Report`, `MyAppointment` e `Patient`. Criar/cancelar invalida listas/detalhes Appointment e Slot; criar/editar/publicar invalida Report e Appointment correspondente; publicar também MyAppointment na sessão que o possuir. Criar/editar paciente invalida Patient e os dados de agendamentos que exibem seu nome. Eventos reais de foco/reconexão estão ligados ao store; sem polling/notificação entre atores.
 - SLOT_TAKEN: refazer slots/agenda, manter paciente/exame/data, limpar só slot perdido. Conflitos de laudo/cancelamento: refazer detalhe/laudo, preservar texto não salvo em memória e mostrar estado atual/bloqueado, sem reenvio/sobrescrita automática. Transporte não apaga formulário; jornada em PRD.
 - Paciente 404 mostra `Não encontramos este registro`; trocar id limpa visualização anterior antes da leitura. Schema de resposta inválido é indisponibilidade, nunca vazio/sucesso/autorização.
+- `view=calendar` e `calendarDate=YYYY-MM-DD` pertencem somente às URLs de tela STAFF. A agenda valida o contexto visual e consulta a API com `scope=all`/patientId; nunca envia esses parâmetros extras aos schemas HTTP. O retorno de login/laudo preserva apenas contexto visual válido.
+- `returnTo` em `/agendamentos/novo` é contexto client-only para abandonar o formulário e voltar exclusivamente a uma URL interna `/agenda` validada. Data/paciente da criação e retorno da origem são independentes; o formulário não pré-seleciona paciente/exame. Esse campo não integra o POST de agendamento nem amplia o contrato HTTP.
 
 ## 7. Erros
 
@@ -255,7 +259,7 @@ Corpo compacto canônico NOT_FOUND, inclusive STAFF:
 | `TOO_SHORT` | `Valor menor que o limite permitido.` | Abaixo do mínimo após normalizar. |
 | `TOO_LONG` | `Valor maior que o limite permitido.` | Acima do máximo. |
 | `UNKNOWN_FIELD` | `Campo não permitido.` | Propriedade/chave fora do schema. |
-| `EMPTY_PATCH` | `Informe ao menos um campo.` | Nenhum campo editável reconhecido presente; três campos em laudos, dois em pacientes. |
+| `EMPTY_PATCH` | `Informe ao menos um campo.` | Nenhum campo editável reconhecido presente; três campos em laudos ou em pacientes (name, email, active). |
 | `UNEXPECTED_BODY` | `Não envie corpo nesta requisição.` | Corpo não vazio em rota sem corpo. |
 | `INVALID_JSON` | `Envie JSON válido.` | Falha sintática do parser. |
 | `DUPLICATE_QUERY` | `Informe este parâmetro uma única vez.` | Query repetida. |

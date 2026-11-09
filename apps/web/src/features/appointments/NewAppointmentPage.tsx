@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { CreateAppointmentRequestSchema, LocalDateSchema, UUIDSchema, type CreateAppointmentRequest } from '@drlaudo/contract';
 import { api, useCreateAppointmentMutation, useGetExamTypesQuery, useGetPatientsQuery, useGetSlotsQuery } from '../../app/api';
 import { useAppStore } from '../../app/hooks';
+import { safeReturnTo } from '../../app/navigation';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
@@ -23,6 +24,13 @@ export function NewAppointmentPage() {
   const validDate = LocalDateSchema.safeParse(date).success && params.getAll('date').length <= 1;
   const returnPatient = UUIDSchema.safeParse(params.get('patientId'));
   const returnPatientId = returnPatient.success && params.getAll('patientId').length === 1 ? returnPatient.data : '';
+  const requestedReturnTo = params.getAll('returnTo').length === 1 ? params.get('returnTo') : null;
+  const validatedReturnTo = safeReturnTo(requestedReturnTo, 'STAFF');
+  const originReturnTo = requestedReturnTo === validatedReturnTo
+    && (validatedReturnTo === '/agenda' || validatedReturnTo.startsWith('/agenda?')) ? validatedReturnTo : null;
+  const agendaHref = originReturnTo ?? `/agenda?${new URLSearchParams({
+    date: validDate ? date : todayDate(), ...(returnPatientId ? { patientId: returnPatientId } : {}),
+  })}`;
   const navigate = useNavigate();
   const store = useAppStore();
   const patients = useGetPatientsQuery();
@@ -39,6 +47,7 @@ export function NewAppointmentPage() {
   const disabled = creation.isLoading || reconciling || pendingAttempt !== null;
   const catalogsReady = patients.currentData !== undefined && !patients.isError
     && examTypes.currentData !== undefined && !examTypes.isError;
+  const activePatients = patients.currentData?.filter((patient) => patient.active) ?? [];
   const selectedUnavailable = Boolean(startsAt) && !slots.currentData?.slots.some((slot) => slot.startsAt === startsAt && slot.available);
 
   async function reconcileCreation(attempt: NonNullable<typeof pendingAttempt>) {
@@ -84,7 +93,8 @@ export function NewAppointmentPage() {
   }
 
   async function submit(values: CreateAppointmentRequest) {
-    if (disabled || !catalogsReady || !validDate || slots.isFetching || slots.isError || !slots.currentData || selectedUnavailable) return;
+    if (disabled || !catalogsReady || !validDate || slots.isFetching || slots.isError || !slots.currentData || selectedUnavailable
+      || !patients.currentData?.some((patient) => patient.id === values.patientId && patient.active)) return;
     setError('');
     const generation = store.getState().auth.generation;
     try {
@@ -102,18 +112,22 @@ export function NewAppointmentPage() {
     }
   }
   function changeDate(value: string) {
-    setParams({ date: value, ...(returnPatientId ? { patientId: returnPatientId } : {}) }, { replace: true });
+    setParams({
+      date: value, ...(returnPatientId ? { patientId: returnPatientId } : {}),
+      ...(originReturnTo ? { returnTo: originReturnTo } : {}),
+    }, { replace: true });
     form.setValue('startsAt', ''); setError('');
   }
   const errors = form.formState.errors;
-  const hasFree = slots.currentData?.slots.some((slot) => slot.available);
-  const selectedPatient = patients.currentData?.find((item) => item.id === patientId);
+  const selectedPatient = activePatients.find((item) => item.id === patientId);
+  const selectedInactive = Boolean(patientId) && patients.currentData !== undefined && !selectedPatient;
+  const noActivePatients = catalogsReady && activePatients.length === 0;
   const selectedExam = examTypes.currentData?.find((item) => item.id === examTypeId);
   return (
     <div className="space-y-7 sm:space-y-8">
       <div className="space-y-2">
-        <Link className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-primary" to={`/agenda?${new URLSearchParams({ date: validDate ? date : todayDate(), ...(returnPatientId ? { patientId: returnPatientId } : {}) })}`}><ChevronLeft className="size-4" aria-hidden />Voltar para agenda</Link>
-        <PageHeader title="Novo agendamento" description="Escolha o paciente, o exame e o melhor horário." />
+        <Link className="-ml-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-primary" to={agendaHref}><ChevronLeft className="size-4" aria-hidden />Voltar para agenda</Link>
+        <PageHeader title="Novo agendamento" description="Defina o paciente, o exame e o horário." />
       </div>
 
       <form onSubmit={(event) => { void form.handleSubmit(submit)(event); }} noValidate>
@@ -125,11 +139,14 @@ export function NewAppointmentPage() {
               <div className="grid gap-5 sm:grid-cols-2">
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="new-patient">Paciente</Label>
-                  <Select id="new-patient" {...form.register('patientId')} disabled={disabled || patients.isFetching || patients.isError} aria-invalid={!!errors.patientId} aria-describedby={errors.patientId ? 'patient-error' : undefined}>
+                  <Select id="new-patient" {...form.register('patientId')} disabled={disabled || patients.isFetching || patients.isError} aria-invalid={!!errors.patientId || selectedInactive} aria-describedby={['patient-help', errors.patientId ? 'patient-error' : '', selectedInactive ? 'patient-unavailable' : ''].filter(Boolean).join(' ')}>
                     <option value="">Selecione um paciente</option>
-                    {patients.currentData?.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
+                    {activePatients.map((patient) => <option key={patient.id} value={patient.id}>{patient.name}</option>)}
                   </Select>
                   {errors.patientId && <p id="patient-error" className="text-sm text-destructive">Selecione um paciente.</p>}
+                  <p id="patient-help" className="text-xs leading-relaxed text-muted-foreground">{noActivePatients ? 'Não há pacientes ativos para novos agendamentos. Cadastre ou reative um paciente na administração.' : 'Somente pacientes ativos podem receber novos agendamentos.'}</p>
+                  {noActivePatients && <Button asChild variant="outline" size="sm"><Link to="/pacientes">Administrar pacientes</Link></Button>}
+                  {selectedInactive && <p id="patient-unavailable" role="alert" className="text-sm text-destructive">Este paciente não está ativo. Selecione outro paciente para agendar.</p>}
                 </div>
                 <div className="min-w-0 space-y-2">
                   <Label htmlFor="new-exam">Exame</Label>
@@ -162,7 +179,6 @@ export function NewAppointmentPage() {
               ) : slots.currentData ? (
                 <div className="mt-6 space-y-5">
                   <SlotGrid className="[&_[data-slot=slot-grid]]:grid-cols-[repeat(auto-fit,minmax(4.25rem,1fr))]" slots={slots.currentData.slots} value={startsAt} onChange={(value) => { form.setValue('startsAt', value, { shouldValidate: true }); setError(''); }} disabled={disabled} />
-                  {!hasFree && <p className="text-sm leading-relaxed text-muted-foreground">Não há horários disponíveis nesta data. Escolha outra data.</p>}
                   <div className="flex flex-wrap gap-x-5 gap-y-3 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-2"><span className="size-2.5 rounded-sm border border-input bg-card" aria-hidden />Disponível</span>
                     <span className="inline-flex items-center gap-2"><span className="size-2.5 rounded-sm bg-primary" aria-hidden />Selecionado</span>
@@ -176,16 +192,16 @@ export function NewAppointmentPage() {
 
           <aside className="min-w-0 rounded-xl bg-muted/60 p-5 sm:p-6 lg:sticky lg:top-8" aria-label="Resumo do agendamento">
             <h2 className="font-display text-lg font-semibold tracking-tight">Resumo do agendamento</h2>
-            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Confira os detalhes antes de confirmar.</p>
+            {catalogsReady && (!selectedPatient || !selectedExam) && <p className="mt-2 text-sm leading-relaxed text-muted-foreground">Selecione paciente e exame para completar o resumo.</p>}
             <dl className="my-6 space-y-5 border-y py-5 text-sm">
-              <div><dt className="text-xs text-muted-foreground">Paciente</dt><dd className="mt-1 break-words font-medium leading-6">{selectedPatient?.name ?? 'Ainda não selecionado'}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Exame</dt><dd className="mt-1 break-words font-medium leading-6">{selectedExam?.name ?? 'Ainda não selecionado'}</dd></div>
+              {selectedPatient && <div><dt className="text-xs text-muted-foreground">Paciente</dt><dd className="mt-1 break-words font-medium leading-6">{selectedPatient.name}</dd></div>}
+              {selectedExam && <div><dt className="text-xs text-muted-foreground">Exame</dt><dd className="mt-1 break-words font-medium leading-6">{selectedExam.name}</dd></div>}
               <div><dt className="text-xs text-muted-foreground">Data e horário</dt><dd className="mt-1 font-medium leading-6 tabular-nums">{validDate ? date.split('-').reverse().join('/') : 'Escolha uma data'}{startsAt ? ` às ${formatTime(startsAt)}` : ''}</dd></div>
               <div className="flex items-baseline justify-between gap-3"><dt className="text-muted-foreground">Duração</dt><dd>30 minutos</dd></div>
             </dl>
             {error && <p role="alert" className="mb-4 rounded-lg bg-destructive-soft p-3 text-sm text-destructive">{error}</p>}
             {pendingAttempt && !reconciling && <Button type="button" variant="outline" className="mb-4 w-full" onClick={() => void reconcileCreation(pendingAttempt)}>Conferir agendamento</Button>}
-            <Button type="submit" className="w-full" disabled={disabled || !catalogsReady || !validDate || slots.isFetching || slots.isError || selectedUnavailable}><Check className="size-4" aria-hidden />{creation.isLoading || reconciling ? 'Agendando…' : 'Agendar exame'}</Button>
+            <Button type="submit" className="w-full" disabled={disabled || !catalogsReady || !validDate || slots.isFetching || slots.isError || selectedUnavailable || selectedInactive || noActivePatients}><Check className="size-4" aria-hidden />{creation.isLoading || reconciling ? 'Agendando…' : 'Agendar exame'}</Button>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">A disponibilidade é confirmada ao concluir o agendamento.</p>
           </aside>
         </div>

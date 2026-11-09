@@ -79,12 +79,12 @@ export function registerAuth(
     // fast-jwt accepts equality; JWT exp is an exclusive boundary.
     if (parsed.data.exp <= Math.floor(now / 1000)) throw unauthorized();
 
-    // A removed or demoted user must not keep acting on a valid signature.
+    // Persisted identity/state is authoritative even for a valid signature.
     const user = await options.prisma.user.findUnique({
       where: { id: parsed.data.sub },
-      select: { id: true, role: true },
+      select: { id: true, role: true, active: true },
     });
-    if (!user || user.role !== parsed.data.role) throw unauthorized();
+    if (!user || !user.active || user.role !== parsed.data.role) throw unauthorized();
     if (access !== 'any' && parsed.data.role !== access) throw forbidden();
 
     request.claims = parsed.data;

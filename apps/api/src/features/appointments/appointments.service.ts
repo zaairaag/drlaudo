@@ -51,20 +51,25 @@ export function createAppointmentsService({ prisma, clock }: AppointmentsDeps) {
     },
 
     async create(input: CreateAppointmentRequest): Promise<StaffAppointment> {
-      // Missing patient and missing exam share the same opaque 404.
-      const [patient, examType] = await Promise.all([
-        prisma.user.findFirst({ where: { id: input.patientId, role: 'PATIENT' }, select: { id: true } }),
-        prisma.examType.findUnique({ where: { id: input.examTypeId }, select: { id: true } }),
-      ]);
-      if (!patient || !examType) throw notFound();
-
-      if (!isValidSlot(input.startsAt)) throw new DomainError('INVALID_SLOT');
-      const capturedNow = clock.now();
-      const now = UtcDateTimeSchema.parse(capturedNow.toISOString());
-      if (isPast(input.startsAt, now)) throw new DomainError('PAST_DATE');
-
       try {
         return await prisma.$transaction(async (tx) => {
+          // Serialize booking with activity changes on the same User row.
+          // Re-read active after waiting; an inactive patient stays an opaque 404.
+          const [patient] = await tx.$queryRaw<{ id: string; active: boolean }[]>`
+            SELECT id, active FROM "User"
+            WHERE id = ${input.patientId}::uuid AND role = 'PATIENT'
+            FOR UPDATE
+          `;
+          const examType = await tx.examType.findUnique({
+            where: { id: input.examTypeId }, select: { id: true },
+          });
+          if (!patient?.active || !examType) throw notFound();
+
+          if (!isValidSlot(input.startsAt)) throw new DomainError('INVALID_SLOT');
+          const capturedNow = clock.now();
+          const now = UtcDateTimeSchema.parse(capturedNow.toISOString());
+          if (isPast(input.startsAt, now)) throw new DomainError('PAST_DATE');
+
           const row = await tx.appointment.create({
             data: {
               id: randomUUID(),

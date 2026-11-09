@@ -5,6 +5,10 @@
 **Autoridade:** [DESAFIO](DESAFIO.md) → este Specify canônico → demais documentos. RF/RN preservam identidade e alcance; [DECISIONS](DECISIONS.md) registra os motivos.
 **Entrega:** contrato e frontend compartilhados com API/PostgreSQL reais; gates de segurança, testes, execução limpa e acessibilidade. O Gate A visual/UX continua decisão humana. Três dias de prazo não equivalem a horas dedicadas.
 **Complemento aprovado nesta conversa:** a usuária autorizou “faça isso, ajuste no git e suba na vps por favor” para manter a agenda diária, acrescentar “Ver todos os agendamentos”, preservar filtro por paciente e retorno do laudo, incluindo Git e implantação da melhoria. Não inclui busca por intervalo, paginação ou mudanças no isolamento do portal.
+**Melhoria seguinte aprovada por formulário:** a usuária escolheu linha do tempo por paciente agrupada por mês, rascunhos editáveis/publicados imutáveis e desativação/reativação em vez de exclusão. Desativar impede login e novos agendamentos, preservando histórico; não registra atendimento realizado. A execução desta melhoria é local até autorização específica de publicação/migração na VPS.
+**Calendário aprovado:** a usuária pediu “pode deixa a linha do tempo mais ter uma versao calendario ali”. Acrescentar calendário mensal STAFF alternável, com contagem por dia, filtro por paciente, seleção do dia e exames/ações abaixo; preservar linha do tempo, agenda diária e retorno contextual. Somente preview local, sem publicação.
+**Refinamento de fluxo aprovado por formulário:** após revisão real de UI/UX, a usuária escolheu `initial_view=calendar` e `scope=integrated_staff_flow`. A equipe entra no calendário; controles explícitos Dia/Calendário/Linha do tempo separam visualização de navegação temporal. Filtros/paciente compactos, detalhes do dia próximos da grade, acesso prioritário aos exames em Pacientes, identificação do paciente em todas as leituras STAFF e retorno contextual de novo agendamento. Preservar identidade, capacidades existentes e regras; execução somente local.
+**Publicação autorizada no pedido seguinte:** “blz, os testes ta tudo passado? da pra subir no git e na vps?” autoriza concluir validação integral e publicar o conjunto aprovado por PR/CI e na VPS da demo, preservando dados e aplicando a migração aditiva. Não autoriza CD automático, dados reais ou alegar homologação com leitor de tela/celular físico.
 
 ## Problem Statement
 A clínica fictícia precisa reservar horários sem conflito, registrar laudos e liberar somente os publicados ao paciente correto. Autorização também em chamadas diretas e cinco cenários automatizados são exigências do desafio.
@@ -20,7 +24,7 @@ A clínica fictícia precisa reservar horários sem conflito, registrar laudos e
 |---|---|
 | PDF/anexos/DICOM/assinatura digital/validação clínica | Dispensados; laudo é texto simples. |
 | Múltiplas salas/notificações/pagamentos/dark mode | Escopo fechado; template não cria capacidades. |
-| Delete/reativação/remarcação por update/transferência/despublicação | Preservar histórico e publicação imutável. |
+| Exclusão física/reativação de agendamento/remarcação por update/transferência/despublicação | Preservar histórico e publicação imutável; reativação administrativa de paciente é permitida no complemento S7. |
 | Uso clínico real ou deploy presumido | Demo; Docker/deploy opcionais, posteriores e sujeitos a autorização. |
 
 ## Assumptions & Open Questions
@@ -89,7 +93,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 **Why P1:** RF-03/04/05 são a jornada obrigatória de agendamento.
 **Acceptance Criteria:**
 1. WHEN a equipe consulta agenda THEN a lista SHALL respeitar filtros/intervalo/ordem de API §4.2.
-2. WHEN a agenda abre sem data nem modo completo THEN a tela SHALL selecionar hoje em Brasília.
+2. WHEN a agenda abre sem contexto de visualização/data THEN a tela SHALL abrir o calendário mensal com hoje em Brasília selecionado; URLs diárias explícitas SHALL manter a agenda diária.
 3. WHEN a equipe usa anterior/próxima data THEN a seleção SHALL mudar um dia civil local preservando o paciente; “Hoje” SHALL voltar ao dia atual de Brasília sem limpar esse filtro. A agenda SHALL apresentar data por extenso e marcador “Hoje” somente no dia correspondente.
 4. WHEN filtros válidos mudam ou voltam pelo histórico THEN a URL SHALL representar a seleção atual.
 5. IF o filtro da URL é inválido THEN a tela SHALL oferecer “Limpar filtros” sem consultar esse filtro.
@@ -109,10 +113,20 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 19. WHEN cancelar tem sucesso THEN a tela SHALL apresentar o item cancelado após reconciliar agenda/detalhe/grade.
 20. IF o item deixou de ser cancelável THEN a tela SHALL mostrar o estado atualizado sem anunciar sucesso.
 21. WHEN a equipe reserva horário liberado ainda futuro THEN o sistema SHALL criar novo agendamento, sem reativar o cancelado.
-22. WHEN a equipe usa “Ver todos os agendamentos” THEN a agenda SHALL consultar explicitamente o histórico completo, incluindo passados, futuros e cancelados, preservando o paciente e removendo o recorte diário.
-23. WHILE a consulta completa está ativa THEN a tela SHALL mostrar “Todos os agendamentos”, o paciente atual e a data/hora de cada exame em Brasília, sem aparentar que os registros pertencem ao mesmo dia.
+22. WHEN a equipe escolhe “Linha do tempo” THEN a agenda SHALL consultar explicitamente o histórico completo, incluindo passados, futuros e cancelados, preservando o paciente e removendo o recorte diário.
+23. WHILE a linha do tempo completa está ativa THEN a tela SHALL mostrar “Todos os períodos”, o paciente atual e a data/hora de cada exame em Brasília, sem campo de data vazio que aparente erro.
 24. WHEN a equipe altera o paciente no modo completo THEN a consulta SHALL manter o modo completo e filtrar somente o paciente selecionado.
-25. WHEN a equipe escolhe uma data ou “Hoje” THEN a agenda SHALL voltar ao recorte diário mantendo o paciente; F5/histórico e retorno do laudo SHALL preservar o modo e paciente atuais.
+25. WHEN a equipe usa “Hoje” em Dia ou Calendário THEN a agenda SHALL selecionar hoje preservando modo e paciente; a linha do tempo SHALL mostrar todos os períodos, sem comando temporal que troque o modo implicitamente. F5/histórico e retorno do laudo SHALL preservar o modo e paciente atuais.
+26. WHEN o modo completo em linha do tempo está ativo THEN a agenda SHALL agrupar os exames por mês, preservando ordem/filtro/URL e exibindo data e hora em cada item.
+27. WHEN a data do exame é anterior ao dia atual de Brasília THEN o item SHALL mostrar “Data passada”; WHEN o dia é hoje THEN SHALL mostrar “Hoje”; WHEN é posterior THEN SHALL mostrar “Próximo exame”. Essas marcações SHALL não afirmar realização nem substituir situação cancelada/publicação.
+28. WHEN a equipe filtra um paciente THEN a agenda SHALL oferecer edição de nome/e-mail e acesso aos rascunhos editáveis sem alterar publicados.
+29. WHEN a equipe escolhe “Calendário” THEN a agenda SHALL apresentar uma grade mensal com contagem de exames por dia, navegação entre meses e seleção por teclado, preservando o paciente e a opção de linha do tempo.
+30. WHEN a equipe seleciona um dia no calendário THEN a tela SHALL apresentar somente seus exames e ações, incluindo cancelados e marcas temporais, ou um estado vazio explícito sem ocultar a grade.
+31. WHEN ocorre F5, histórico ou retorno do laudo no calendário THEN a agenda SHALL restaurar visualização, dia/mês e paciente pela URL; parâmetros visuais SHALL não integrar consultas HTTP.
+32. WHEN a equipe alterna Dia/Calendário/Linha do tempo THEN a tela SHALL distinguir o modo ativo de comandos como “Hoje”, preservando paciente e um dia válido conforme a visualização.
+33. WHILE a equipe usa calendário THEN a grade e os exames do dia SHALL ficar lado a lado quando houver largura suficiente, e no celular SHALL oferecer acesso explícito aos detalhes sem deslocar foco automaticamente em cada seta.
+34. WHILE um paciente está filtrado THEN o contexto SHALL permanecer compacto junto aos filtros, com atividade e edição acessíveis, sem empurrar os exames para baixo de uma ficha administrativa permanente.
+35. WHEN a equipe volta de novo agendamento sem concluir criação THEN a agenda SHALL restaurar o contexto seguro de origem (modo, dia/mês e paciente), sem pré-selecionar paciente/exame nem mudar o destino da criação confirmada.
 **Independent Test:** Agenda/slots próprios: filtro/URL, criação/perda de slot, cancelar DRAFT e reutilizar; CEN-01/05 exigem Postgres.
 
 ### P1: S4 — Draft and publish a report
@@ -140,6 +154,7 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 19. IF continua editável THEN “Recarregar rascunho” SHALL exigir confirmação antes de descartar alterações.
 20. IF ficou bloqueado THEN a tela SHALL mostrar leitura canônica com aviso de alterações não salvas, sem forçar escrita.
 21. WHEN o id da rota muda THEN a tela SHALL descartar conteúdo/edição do id anterior.
+22. WHILE o detalhe do agendamento STAFF está confirmado THEN a tela SHALL manter nome do paciente, exame e data/hora visíveis também em leitura publicada e cancelada, sem ampliar DTOs ou conteúdo do portal.
 **Independent Test:** URL antiga sem cache, salvar/editar/publicar exame futuro, desistir, conflito e bloqueios; banco real prova RN-14…21.
 
 ### P1: S5 — Patient portal
@@ -187,6 +202,9 @@ O inventário HTTP, campos, schemas, códigos, mensagens de rede e precedências
 8. WHEN a conta cadastrada faz login THEN o portal SHALL apresentar somente seus próprios dados, inicialmente sem exames.
 9. IF o cadastro/edição falha THEN a tela SHALL associar o erro aos campos e preservar os dados locais sem persistir senha em storage.
 10. WHEN o cadastro/edição é confirmado THEN listas e seletores SHALL refletir a identidade atualizada, sem exigir reload manual.
+11. WHEN STAFF desativa ou reativa um paciente com confirmação explícita THEN o sistema SHALL atualizar somente a atividade administrativa e preservar credenciais, identidade, exames e laudos.
+12. WHILE o paciente está inativo THEN login e requisições autenticadas posteriores SHALL retornar 401 genérico, e novos agendamentos para ele SHALL retornar 404 sem escrita. Reativação SHALL permitir login novamente.
+13. WHEN STAFF consulta histórico de paciente inativo THEN seus exames/laudos SHALL continuar disponíveis à equipe. Novos agendamentos SHALL oferecer somente pacientes ativos; edição e reativação SHALL permanecer acessíveis na administração.
 **Independent Test:** STAFF cadastra e edita; duplicação/validação/perfil não escrevem; nova conta autentica e não recebe dados dos pacientes existentes.
 
 ## Edge Cases
@@ -245,7 +263,7 @@ Rastreabilidade dos requisitos originais e do complemento autorizado. Estados s�
 | `/`, `/login` | STAFF home `/agenda`, PATIENT `/meus-exames`; sem sessão, login: “E-mail”/“Senha”/“Entrar”, três atalhos e aviso fictício. |
 | `/agenda?date=YYYY-MM-DD&patientId=UUID` | STAFF: data/paciente opcional; “Novo agendamento” preserva data. |
 | `/agendamentos/novo?date=YYYY-MM-DD` | STAFF: paciente→exame→data→horário→“Agendar exame”. |
-| `/pacientes` | STAFF: lista, cadastro e edição de nome/e-mail; sem exclusão, reset de senha ou mudança de perfil. |
+| `/pacientes` | STAFF: cadastro, edição de nome/e-mail e desativação/reativação com histórico preservado; sem exclusão física/reset de senha/mudança de perfil. |
 | `/agendamentos/:id/laudo` | STAFF: detalhe/laudo independente da agenda. |
 | `/meus-exames`, `/meus-exames/:id/laudo` | PATIENT: histórico/leitor; id do agendamento, não do laudo. |
 | `/_ds` | Só dev: catálogo/estados e controles injetados, sem importar mock. |
