@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarPlus, FileText, LogOut, User as UserIcon } from 'lucide-react';
+import { CalendarClock, CalendarPlus, FileText, LogOut, UsersRound, User as UserIcon } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router';
 import { useSession } from '../../app/session';
 import { Logo } from '../brand/Logo';
@@ -6,13 +6,20 @@ import { Button } from '../ui/button';
 import { AppFooter } from './AppFooter';
 import { RouteFocus } from './RouteFocus';
 
+const navigationClassName = ({ isActive }: { isActive: boolean }) =>
+  `flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card lg:min-h-12 lg:flex-none lg:justify-start lg:gap-3 lg:py-2.5 ${
+    isActive
+      ? 'border-brand-200 bg-accent text-accent-foreground font-semibold'
+      : 'border-transparent text-muted-foreground hover:bg-muted hover:text-foreground'
+  }`;
+
 export function AppShell() {
   const { user, logout } = useSession();
   const isStaff = user?.role === 'STAFF';
-  const roleWidth = isStaff ? 'max-w-6xl' : 'max-w-2xl';
+  const roleWidth = isStaff ? 'max-w-7xl' : 'max-w-4xl';
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground lg:pl-60">
       <RouteFocus />
       <a
         href="#conteudo"
@@ -21,133 +28,69 @@ export function AppShell() {
         Pular para o conteúdo
       </a>
 
-      {/* Header institucional */}
-      <header className="sticky top-0 z-30 border-b border-border bg-card/95 backdrop-blur-xs">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-6">
-            <NavLink to={isStaff ? '/agenda' : '/meus-exames'} className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring">
-              <Logo variant="full" />
-            </NavLink>
-
-            {/* Navegação desktop */}
-            <nav aria-label="Navegação principal" className="hidden md:flex md:items-center md:gap-1">
-              {isStaff ? (
-                <>
-                  <NavLink
-                    to="/agenda"
-                    end={false}
-                    className={({ isActive }) =>
-                      `inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-accent text-accent-foreground font-semibold'
-                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-                      }`
-                    }
-                  >
-                    <CalendarClock className="size-4" aria-hidden="true" />
-                    <span>Agenda</span>
-                  </NavLink>
-                  <NavLink
-                    to="/agendamentos/novo"
-                    className={({ isActive }) =>
-                      `inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                        isActive
-                          ? 'bg-accent text-accent-foreground font-semibold'
-                          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-                      }`
-                    }
-                  >
-                    <CalendarPlus className="size-4" aria-hidden="true" />
-                    <span>Novo agendamento</span>
-                  </NavLink>
-                </>
-              ) : (
-                <NavLink
-                  to="/meus-exames"
-                  end
-                  className={({ isActive }) =>
-                    `inline-flex min-h-10 items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive
-                        ? 'bg-accent text-accent-foreground font-semibold'
-                        : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
-                    }`
-                  }
-                >
-                  <FileText className="size-4" aria-hidden="true" />
-                  <span>Meus exames</span>
-                </NavLink>
-              )}
-            </nav>
-          </div>
-
-          {/* Dados do usuário e Sair */}
-          <div className="flex items-center gap-3">
-            <div className="hidden text-right text-xs sm:block">
-              <span className="block font-semibold text-foreground">{user?.name}</span>
-              <span className="block text-muted-foreground">{isStaff ? 'Equipe Dr. Laudo' : 'Paciente'}</span>
-            </div>
-            <div className="flex size-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground sm:hidden">
-              <UserIcon className="size-4" aria-hidden="true" />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={logout}
-              className="gap-1.5"
-              aria-label="Sair"
-            >
-              <LogOut className="size-4" aria-hidden="true" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
-          </div>
+      <header className="sticky top-0 z-30 grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 border-b border-border bg-card px-4 py-2 sm:px-6 lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-60 lg:flex-col lg:items-stretch lg:gap-0 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:px-5 lg:py-8">
+        <div className="min-w-0 lg:px-2">
+          <NavLink
+            to={isStaff ? '/agenda' : '/meus-exames'}
+            className="inline-flex min-h-11 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-card"
+          >
+            <Logo variant="full" />
+          </NavLink>
         </div>
 
-        {/* Navegação mobile */}
-        <nav aria-label="Navegação móvel" className="flex border-t border-border px-3 py-1.5 md:hidden">
+        <nav
+          aria-label="Navegação principal"
+          className="order-3 col-span-2 flex min-w-0 flex-wrap gap-1 lg:order-2 lg:mt-10 lg:flex-col lg:gap-2"
+        >
           {isStaff ? (
             <>
-              <NavLink
-                to="/agenda"
-                className={({ isActive }) =>
-                  `flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-xs font-medium transition-colors ${
-                    isActive ? 'bg-accent text-accent-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'
-                  }`
-                }
-              >
-                <CalendarClock className="size-4" aria-hidden="true" />
+              <NavLink to="/agenda" end={false} className={navigationClassName}>
+                <CalendarClock className="size-4 shrink-0" aria-hidden="true" />
                 <span>Agenda</span>
               </NavLink>
-              <NavLink
-                to="/agendamentos/novo"
-                className={({ isActive }) =>
-                  `flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-xs font-medium transition-colors ${
-                    isActive ? 'bg-accent text-accent-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'
-                  }`
-                }
-              >
-                <CalendarPlus className="size-4" aria-hidden="true" />
-                <span>Novo agendamento</span>
+              <NavLink to="/agendamentos/novo" className={navigationClassName} aria-label="Novo agendamento">
+                <CalendarPlus className="size-4 shrink-0" aria-hidden="true" />
+                <span className="lg:hidden" aria-hidden="true">Agendar</span>
+                <span className="hidden lg:inline" aria-hidden="true">Novo agendamento</span>
+              </NavLink>
+              <NavLink to="/pacientes" className={navigationClassName}>
+                <UsersRound className="size-4 shrink-0" aria-hidden="true" />
+                <span>Pacientes</span>
               </NavLink>
             </>
           ) : (
-            <NavLink
-              to="/meus-exames"
-              className={({ isActive }) =>
-                `flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-xs font-medium transition-colors ${
-                  isActive ? 'bg-accent text-accent-foreground font-semibold' : 'text-muted-foreground hover:text-foreground'
-                }`
-              }
-            >
-              <FileText className="size-4" aria-hidden="true" />
+            <NavLink to="/meus-exames" end className={navigationClassName}>
+              <FileText className="size-4 shrink-0" aria-hidden="true" />
               <span>Meus exames</span>
             </NavLink>
           )}
         </nav>
+
+        <div className="order-2 flex min-w-0 items-center justify-end gap-3 lg:order-3 lg:mt-auto lg:flex-col lg:items-stretch lg:gap-4 lg:border-t lg:border-border lg:pt-5">
+          <div className="hidden min-w-0 items-center gap-3 sm:flex">
+            <span className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground lg:flex">
+              <UserIcon className="size-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 max-w-40 text-right text-sm lg:max-w-none lg:text-left">
+              <span className="block break-words font-semibold text-foreground">{user?.name}</span>
+              <span className="mt-0.5 block text-muted-foreground">{isStaff ? 'Equipe Dr. Laudo' : 'Paciente'}</span>
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            className="gap-2 lg:w-full lg:justify-start"
+            aria-label="Sair"
+          >
+            <LogOut className="size-4" aria-hidden="true" />
+            <span>Sair</span>
+          </Button>
+        </div>
       </header>
 
-      {/* Conteúdo principal */}
-      <main id="conteudo" tabIndex={-1} className="flex-1 outline-none">
-        <div className={`mx-auto w-full ${roleWidth} px-4 py-6 sm:px-6 sm:py-8`}>
+      <main id="conteudo" tabIndex={-1} className="min-w-0 flex-1 outline-none">
+        <div className={`mx-auto w-full ${roleWidth} px-4 py-7 sm:px-8 sm:py-10 lg:px-10 lg:py-12 xl:px-12`}>
           <Outlet />
         </div>
       </main>

@@ -18,17 +18,17 @@
   --highlight: oklch(0.58 0.10 190);
   --highlight-strong: oklch(0.47 0.09 192);
   --highlight-soft: oklch(0.95 0.03 190);
-  --background: oklch(0.99 0.003 250);
-  --foreground: oklch(0.22 0.02 255);
+  --background: oklch(0.975 0.005 240);
+  --foreground: oklch(0.25 0.035 250);
   --card: oklch(1 0 0);
   --card-foreground: var(--foreground);
   --popover: oklch(1 0 0);
   --popover-foreground: var(--foreground);
-  --muted: oklch(0.96 0.008 250);
-  --muted-foreground: oklch(0.48 0.02 255);
-  --border: oklch(0.91 0.01 250);
-  --input: oklch(0.91 0.01 250);
-  --ring: var(--brand-500);
+  --muted: oklch(0.955 0.008 240);
+  --muted-foreground: oklch(0.46 0.025 250);
+  --border: oklch(0.90 0.012 240);
+  --input: oklch(0.64 0.018 245);
+  --ring: var(--brand-600);
   --primary: var(--brand-700);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: var(--brand-50);
@@ -42,7 +42,7 @@
   --destructive: oklch(0.55 0.21 27);
   --destructive-soft: oklch(0.96 0.03 27);
   --info: var(--brand-600);
-  --radius: 0.625rem;
+  --radius: 0.5rem;
 }
 
 @theme inline {
@@ -90,8 +90,8 @@
   --radius-2xl: calc(var(--radius) + 10px);
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Plus Jakarta Sans Variable", var(--font-sans);
-  --shadow-card: 0 2px 8px -4px oklch(0.30 0.08 260 / 0.10), 0 12px 36px -20px oklch(0.30 0.08 260 / 0.12);
-  --shadow-float: 0 12px 48px -12px oklch(0.22 0.02 255 / 0.20);
+  --shadow-card: 0 2px 4px -2px oklch(0.25 0.035 250 / 0.04), 0 16px 40px -24px oklch(0.25 0.035 250 / 0.13);
+  --shadow-float: 0 20px 60px -18px oklch(0.25 0.035 250 / 0.20);
 }
 
 @layer base {
@@ -106,19 +106,22 @@
   button, input, textarea, select { font: inherit; }
   button:not(:disabled), [role="button"]:not([aria-disabled="true"]) { cursor: pointer; }
   a, button, input, textarea, select { -webkit-tap-highlight-color: transparent; }
-  h1, h2, h3, h4 { text-wrap: balance; overflow-wrap: anywhere; }
+  h1, h2, h3, h4 { text-wrap: balance; overflow-wrap: anywhere; letter-spacing: -0.025em; }
+  main h1 { @apply scroll-mt-32 lg:scroll-mt-8; }
   p { overflow-wrap: anywhere; }
   ::selection { @apply bg-brand-100 text-brand-900; }
   :focus-visible { @apply outline-2 outline-offset-4 outline-ring; }
   [aria-busy="true"] { cursor: progress; }
   input[type="date"] { min-width: 0; }
+  input, textarea { caret-color: var(--primary); }
+  a { text-underline-offset: 0.2em; }
+  * { scrollbar-width: thin; scrollbar-color: var(--input) transparent; }
 }
 
 @layer components {
-  .page-container { @apply mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10; }
-  .patient-container { @apply mx-auto w-full max-w-2xl px-4 py-6 sm:px-6 sm:py-8; }
+  .page-container { @apply mx-auto w-full max-w-6xl px-4 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-12; }
+  .patient-container { @apply mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 sm:py-10; }
   .surface-panel { @apply rounded-xl border bg-card text-card-foreground shadow-card; }
-  .eyebrow { @apply text-xs font-semibold uppercase tracking-[0.16em] text-highlight-strong; }
   .skip-link { @apply sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-5 focus:py-3 focus:text-primary-foreground; }
 }
 

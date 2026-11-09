@@ -12,6 +12,9 @@ export function RouteFocus() {
       if (!heading) return false;
       heading.setAttribute('tabindex', '-1');
       heading.focus({ preventScroll: true });
+      if (typeof heading.scrollIntoView === 'function') {
+        heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+      }
       observer?.disconnect();
       return true;
     };
