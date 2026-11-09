@@ -199,6 +199,12 @@ Modelo de entrada:
 **Achado na publicação:** a execução remota falhou antes de criar jobs. A anotação pública confirmou `Unrecognized named-value: 'job'` nas conexões QA declaradas no `env` do job. Correção mínima: resolver a porta dinâmica no contexto de um step e exportar ambas as conexões via `GITHUB_ENV`, preservando isolamento e banco real. A confirmação do CI depende da execução remota, não do resultado local anterior.
 **Resultado remoto:** [CI 42659130337](https://github.com/zaairaag/drlaudo/actions/runs/42659130337), revisão `9f11486`, concluiu com sucesso em 5m57s, incluindo instalação limpa, lint, typecheck, arquitetura, testes reais, build, Chromium/E2E/acessibilidade e prova Nginx/proxy em Docker QA descartável. Avisos não bloqueantes do runner sobre Node20 das actions e ubuntu-latest foram preservados. README público acessível sem autenticação; health da demo confirmou API e banco ok. A VPS recebeu as fontes públicas via pull fast-forward, sem alterar massa ou reiniciar serviços por mudanças documentais.
 
+**#22 — Correção da expiração identificada no CI** · 2026-11-09 · OMP/Kisha
+**Pedido:** ajustar o CI/CD a partir da execução 42684567860, job129387791280.
+**Diagnóstico:** contrato514/API314 passaram; web teve 423/424, falhando no isolamento após expiração. O callback verificava o prazo uma única vez; se executado antes do instante civil de expiração, não agendava nova verificação.
+**RED/GREEN:** regressão com relógio/timers controlados reproduziu um disparo antecipado em1ms: esperava anonymous e recebeu authenticated. O primeiro ensaio parou na espera de uma página lazy, corrigida na preparação sem mudar o oráculo. O callback passou a recalcular/agendar o restante e limpar o timer anterior. Arquivo auth completo passou50/50. Sem suprimir testes, alterar timeouts ou retries, nem modificar regras HTTP/JWT do backend.
+**Gates locais:** lint, typecheck e check:arch passaram; suíte web425/425 em19arquivos. Verificação remota completa será vinculada à revisão corrigida, sem reaproveitar o sucesso de uma revisão anterior como prova desta mudança.
+
 
 ## Tempo dedicado ao exercício
 
