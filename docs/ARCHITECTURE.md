@@ -97,6 +97,8 @@ UTC na API/banco; calendário/exibição em `America/Sao_Paulo`, independente do
 
 RTK Query mantém servidor apenas em memória. `drlaudo.session` armazena só LoginResponse; nunca senha, texto clínico, filtros ou listas. F5 restaura por `/auth/me` antes de dados privados. Logout/troca/expiração/storage abortam requests, avançam geração, resetam cache e descartam respostas antigas. Logout local não revoga JWT; risco explícito da demo.
 
+O timer de expiração recalcula o tempo restante em cada disparo e ao recuperar foco/visibilidade. Se disparar antes do prazo civil do token, agenda novamente o restante; não deixa a sessão ativa indefinidamente por uma diferença entre relógio civil e timer. Ao expirar, mantém a mesma fronteira de geração, cancelamento de requests e limpeza de sessão/cache.
+
 URL representa filtros/contexto e retorno interno seguro. Dados locais dirty ficam em memória; abandono exige confirmação e F5/fechar usa aviso nativo. Conflito não sobrescreve silenciosamente edição. Publicar requer DRAFT salvo, limpo, válido e confirmação explícita; sem autosave/save+publish oculto. Resultado incerto reconcilia agenda/detalhe/grade antes de nova mutação, sem retry cego.
 
 ## 8. Interface e acessibilidade

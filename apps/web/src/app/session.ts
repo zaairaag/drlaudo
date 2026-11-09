@@ -78,11 +78,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!auth.session) return;
     const expiresAt = sessionExpiresAt(auth.session);
+    let timer: number | undefined;
     const expireIfNeeded = () => {
-      if (expiresAt === null || Date.now() >= expiresAt) dispatch(resetSession({ notice: SESSION_EXPIRED_NOTICE }));
+      window.clearTimeout(timer);
+      const remaining = expiresAt === null ? 0 : expiresAt - Date.now();
+      if (remaining <= 0) dispatch(resetSession({ notice: SESSION_EXPIRED_NOTICE }));
+      else timer = window.setTimeout(expireIfNeeded, remaining);
     };
-    const delay = expiresAt === null ? 0 : Math.max(0, expiresAt - Date.now());
-    const timer = window.setTimeout(expireIfNeeded, delay);
+    expireIfNeeded();
     window.addEventListener('focus', expireIfNeeded);
     document.addEventListener('visibilitychange', expireIfNeeded);
     return () => {

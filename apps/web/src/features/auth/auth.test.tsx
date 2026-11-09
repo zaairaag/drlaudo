@@ -269,6 +269,24 @@ describe('isolamento e restauração da sessão', () => {
     expect(store.getState().auth.session).toBeNull();
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+  it('expira a sessão mesmo quando o timer dispara antes do prazo do token', async () => {
+    defaultFetch();
+    const { store, router } = openApp('/agenda', 'STAFF');
+    await screen.findByRole('button', { name: 'Sair' });
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-10T12:00:00.000Z'));
+    const issuedAt = Math.floor(Date.now() / 1000) - 28798;
+    act(() => { store.dispatch(setSession(makeSession('STAFF', issuedAt))); });
+    // Simula diferença de 1 ms entre o relógio civil e o timer monotônico.
+    vi.setSystemTime(new Date('2026-11-10T11:59:59.999Z'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(store.getState().auth.status).toBe('authenticated');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(store.getState().auth.status).toBe('anonymous');
+    expect(store.getState().auth.session).toBeNull();
+    expect(localStorage.getItem('drlaudo.session')).toBeNull();
+    expect(router.state.location.pathname).toBe('/login');
+  });
   it.each(['logout', 'expiry', 'replacement', 'storage-clear', 'storage-replacement'] as const)('%s impede uma resposta antiga de repovoar DOM/cache', async (cause) => {
     const issuedAt = Math.floor(Date.now() / 1000) - 28798;
     const session = makeSession('STAFF', cause === 'expiry' ? issuedAt : undefined);
