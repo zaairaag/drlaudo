@@ -224,6 +224,7 @@ Segredos JWT/URLs de banco são externos; repositório só nomes/exemplos saniti
 - Paciente 404 mostra `Não encontramos este registro`; trocar id limpa visualização anterior antes da leitura. Schema de resposta inválido é indisponibilidade, nunca vazio/sucesso/autorização.
 - `view=calendar` e `calendarDate=YYYY-MM-DD` pertencem somente às URLs de tela STAFF. A agenda valida o contexto visual e consulta a API com `scope=all`/patientId; nunca envia esses parâmetros extras aos schemas HTTP. O retorno de login/laudo preserva apenas contexto visual válido.
 - `returnTo` em `/agendamentos/novo` é contexto client-only para abandonar o formulário e voltar exclusivamente a uma URL interna `/agenda` validada. Data/paciente da criação e retorno da origem são independentes; o formulário não pré-seleciona paciente/exame. Esse campo não integra o POST de agendamento nem amplia o contrato HTTP.
+- `appointmentStatus=SCHEDULED|CANCELED` e `reportStatus=NONE|DRAFT|PUBLISHED` são filtros visuais STAFF opcionais; ausência significa Todos. A UI aplica AND à lista autorizada e à grade, sem enviar esses parâmetros à API. URLs, histórico, login e retorno do laudo/criação preservam valores válidos. Rascunhos de cancelados continuam consultáveis quando a combinação os seleciona; não há novo estado clínico nem mudança em `/me/*`.
 
 ## 7. Erros
 

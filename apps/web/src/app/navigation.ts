@@ -1,4 +1,4 @@
-import { AppointmentListQuerySchema, LocalDateSchema, UUIDSchema, type Role } from '@drlaudo/contract';
+import { AppointmentListQuerySchema, AppointmentStatusSchema, ReportStatusSchema, LocalDateSchema, UUIDSchema, type Role } from '@drlaudo/contract';
 import { todayDate } from '../lib/time';
 
 export function homeForRole(role: Role) {
@@ -15,10 +15,12 @@ function internalUrl(value: unknown): URL | null {
 }
 
 function validAgendaContext(params: Record<string, string>): boolean {
-  const { focus, view, calendarDate, ...context } = params;
+  const { focus, view, calendarDate, appointmentStatus, reportStatus, ...context } = params;
+  const filtersValid = (appointmentStatus === undefined || AppointmentStatusSchema.safeParse(appointmentStatus).success)
+    && (reportStatus === undefined || reportStatus === 'NONE' || ReportStatusSchema.safeParse(reportStatus).success);
   const calendarContextValid = view === undefined && calendarDate === undefined
     || context.scope === 'all' && view === 'calendar' && LocalDateSchema.safeParse(calendarDate).success;
-  return calendarContextValid && AppointmentListQuerySchema.safeParse(context).success
+  return filtersValid && calendarContextValid && AppointmentListQuerySchema.safeParse(context).success
     && (focus === undefined || UUIDSchema.safeParse(focus).success);
 }
 

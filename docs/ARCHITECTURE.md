@@ -113,6 +113,8 @@ Agenda STAFF oferece Dia, Calendário e Linha do tempo como modos explícitos. `
 
 Labels/erros associados, h1 único, skip link, foco visível e retorno seguro do diálogo; publicação tem revisão literal rolável. Axe, teclado e observação de layout complementam-se. Medição WebAIM é necessária antes de alegar contraste; OKLCH e jsdom não comprovam WCAG AA. Aprovação visual humana, leitor nativo e celular físico não são concedidos por testes automatizados.
 
+Refinamento local aprovado: barra de filtros em duas faixas (modos/data; paciente/situações), sempre visível. Remoção individual de etiquetas e limpeza conjunta atualizam apenas os parâmetros de seleção, preservam modo/data e devolvem foco ao select correspondente. Sem estado paralelo de filtros e sem mudanças de API.
+
 ## 9. Seed e QA
 
 Contas demo: equipe@drlaudo.test, ana.souza@drlaudo.test, bruno.lima@drlaudo.test; senha fictícia pública Demo@1234. Catálogo XRAY/Raio-X de tórax, ULTRASOUND/Ultrassonografia de abdome e MRI/Ressonância de crânio. UUIDs fixos prefixos10000000(User),20000000(ExamType),30000000(Appointment),40000000(Report), com variante/versão válidas.

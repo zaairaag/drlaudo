@@ -99,6 +99,57 @@ function openAgenda(path: string, options: { state?: unknown; loadAppointments?:
 }
 
 describe('Calendário mensal', () => {
+  it('combina situação e laudo no calendário e preserva filtros ao trocar de modo e retornar do laudo', async () => {
+    const rows: StaffAppointment[] = [
+      { ...appointment, report: { id: '40000000-0000-4000-8000-000000000001', status: 'PUBLISHED' } },
+      { ...appointment, id: '30000000-0000-4000-8000-000000000002', report: { id: '40000000-0000-4000-8000-000000000002', status: 'DRAFT' } },
+      { ...appointment, id: '30000000-0000-4000-8000-000000000003' },
+      { ...appointment, id: '30000000-0000-4000-8000-000000000004', status: 'CANCELED', report: { id: '40000000-0000-4000-8000-000000000004', status: 'DRAFT' } },
+    ];
+    const { user, router, fetch } = openAgenda('/agenda?scope=all&view=calendar&calendarDate=2026-11-10', {
+      loadAppointments: async () => Response.json(rows),
+    });
+    await screen.findByRole('grid');
+    expect(screen.getByLabelText('Agendamento')).toBeVisible();
+    expect(screen.getByLabelText('Laudo')).toBeVisible();
+    await user.selectOptions(screen.getByLabelText('Agendamento'), 'CANCELED');
+    await user.selectOptions(screen.getByLabelText('Laudo'), 'DRAFT');
+    expect([...new Set([...document.querySelectorAll('[data-appointment-id]')].map((item) => item.getAttribute('data-appointment-id')))]).toEqual([rows[3]?.id]);
+    expect(screen.getByRole('button', { name: /Terça-feira, 10 de novembro de 2026, 1 exame, 1 cancelado/ })).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Linha do tempo' }));
+    expect(router.state.location.search).toContain('appointmentStatus=CANCELED');
+    expect(router.state.location.search).toContain('reportStatus=DRAFT');
+    await user.selectOptions(screen.getByLabelText('Laudo'), 'PUBLISHED');
+    expect(await screen.findByText('Nenhum agendamento para os filtros selecionados.')).toBeVisible();
+    await user.selectOptions(screen.getByLabelText('Agendamento'), '');
+    await user.click(screen.getAllByRole('link', { name: 'Ver laudo' })[0]!);
+    expect(router.state.location.search).toContain('reportStatus=PUBLISHED');
+    await user.click(await screen.findByRole('link', { name: /Voltar para (a )?agenda/ }));
+    expect(await screen.findByLabelText('Laudo')).toHaveValue('PUBLISHED');
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/appointments?')).every(([url]) => !String(url).includes('Status='))).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Limpar seleção' }));
+    expect(screen.getByLabelText('Laudo')).toHaveValue('');
+    expect([...new Set([...document.querySelectorAll('[data-appointment-id]')].map((item) => item.getAttribute('data-appointment-id')))]).toEqual(rows.map((item) => item.id));
+  });
+
+  it('remove filtros individualmente e limpa seleção sem perder data e visualização', async () => {
+    const { user, router } = openAgenda(`/agenda?scope=all&view=calendar&calendarDate=2026-11-10&patientId=${appointment.patient.id}&appointmentStatus=SCHEDULED&reportStatus=NONE`);
+    await screen.findAllByRole('link', { name: 'Criar laudo' });
+    await user.click(screen.getByRole('button', { name: 'Remover filtro de paciente' }));
+    expect(screen.getByLabelText('Paciente')).toHaveValue('');
+    expect(screen.getByLabelText('Agendamento')).toHaveValue('SCHEDULED');
+    expect(screen.getByLabelText('Laudo')).toHaveValue('NONE');
+    expect(router.state.location.search).toContain('calendarDate=2026-11-10');
+    await user.click(screen.getByRole('button', { name: 'Remover filtro de laudo' }));
+    expect(screen.getByLabelText('Laudo')).toHaveValue('');
+    expect(screen.getByLabelText('Laudo')).toHaveFocus();
+    expect(screen.getByLabelText('Agendamento')).toHaveValue('SCHEDULED');
+    await user.click(screen.getByRole('button', { name: 'Limpar seleção' }));
+    expect(router.state.location.search).toBe('?scope=all&view=calendar&calendarDate=2026-11-10');
+    expect(screen.getByLabelText('Paciente')).toHaveFocus();
+  });
+
+
   it('entra sem contexto no calendário consultando todos os períodos sem buscar primeiro o dia', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-10T15:00:00.000Z'));
