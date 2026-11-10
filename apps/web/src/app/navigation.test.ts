@@ -12,6 +12,8 @@ describe('retorno seguro dos filtros da agenda', () => {
     `/agendamentos/${appointmentId}/laudo?scope=all&patientId=${patientId}`,
     `/agenda?scope=all&view=calendar&calendarDate=2026-11-10&patientId=${patientId}`,
     `/agendamentos/${appointmentId}/laudo?scope=all&view=calendar&calendarDate=2026-11-10&patientId=${patientId}`,
+    `/agenda?scope=all&appointmentStatus=CANCELED&reportStatus=DRAFT`,
+    `/agendamentos/${appointmentId}/laudo?date=2026-11-10&reportStatus=NONE`,
   ])('preserva o modo completo autorizado para equipe: %s', (path) => {
     expect(safeReturnTo(path, 'STAFF')).toBe(path);
     expect(safeReturnTo(path, 'PATIENT')).toBe('/meus-exames');
@@ -33,6 +35,9 @@ describe('retorno seguro dos filtros da agenda', () => {
     'scope=all&calendarDate=2026-11-10',
     'date=2026-11-10&view=calendar&calendarDate=2026-11-10',
     'scope=all&view=other&calendarDate=2026-11-10',
+    'scope=all&appointmentStatus=OTHER',
+    'scope=all&reportStatus=OTHER',
+    'scope=all&reportStatus=DRAFT&reportStatus=PUBLISHED',
   ])('não retoma contexto inválido ou ambíguo: %s', (query) => {
     expect(safeReturnTo(`/agenda?${query}`, 'STAFF')).toBe('/agenda');
     expect(safeReturnTo(`/agendamentos/${appointmentId}/laudo?${query}`, 'STAFF')).toBe('/agenda');
@@ -56,6 +61,7 @@ describe('criação contextual de agendamento', () => {
     [`/agenda?scope=all&view=calendar&calendarDate=2026-12-03&patientId=${patientId}`, '2026-12-03', patientId],
     [`/agenda?scope=all&patientId=${patientId}`, '2026-11-09', patientId],
     ['/agenda', '2026-11-09', undefined],
+    ['/agenda?date=2026-11-10&appointmentStatus=SCHEDULED&reportStatus=NONE', '2026-11-10', undefined],
   ] as const)('abre formulário vazio com data e retorno de %s', (context, date, patient) => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-10T01:00:00.000Z'));

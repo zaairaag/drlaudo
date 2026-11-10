@@ -14,6 +14,8 @@ Na agenda, selecione **10/11/2026** para consultar a massa inicial desta implant
 
 A equipe entra no **Calendário**. Alterne entre **Dia**, **Calendário** e **Linha do tempo**; o filtro **Paciente** acompanha a seleção. O calendário reúne mês e exames do dia, e a linha do tempo mostra todos os períodos agrupados por mês. “Data passada”, “Hoje” e “Próximo exame” indicam a data agendada, não presença confirmada. Ao sair de um laudo ou abandonar um novo agendamento, o contexto de origem é preservado. Em **Pacientes**, **Ver exames** abre o histórico individual; editar e desativar continuam disponíveis. O portal segue restrito ao histórico próprio.
 
+Os filtros **Paciente**, **Agendamento** e **Laudo** ficam visíveis abaixo dos controles de visualização/data e combinam entre si. A grade e as listas mostram os mesmos filtros. Remova uma etiqueta para limpar apenas aquele filtro ou use **Limpar seleção**, mantendo data e visualização. “Não cancelados” não significa exames futuros ou realizados.
+
 ## Executar com Docker
 
 Na raiz do repositório:

@@ -3,7 +3,7 @@ import { Link, useBlocker, useParams, useSearchParams } from 'react-router';
 import { AlertDialog } from 'radix-ui';
 import { ChevronLeft } from 'lucide-react';
 import { toast } from 'sonner';
-import { LocalDateSchema, UUIDSchema, type CreateReportRequest, type StaffReport } from '@drlaudo/contract';
+import { AppointmentStatusSchema, ReportStatusSchema, LocalDateSchema, UUIDSchema, type CreateReportRequest, type StaffReport } from '@drlaudo/contract';
 import {
   useCreateReportMutation,
   useGetAppointmentQuery,
@@ -47,6 +47,10 @@ export function ReportPage() {
     ...(returnPatientId ? { patientId: returnPatientId } : {}),
     ...(returnCalendar && requestedCalendarDate.success ? { view: 'calendar', calendarDate: requestedCalendarDate.data } : {}),
   });
+  const appointmentStatus = params.get('appointmentStatus');
+  const reportStatus = params.get('reportStatus');
+  if (params.getAll('appointmentStatus').length === 1 && AppointmentStatusSchema.safeParse(appointmentStatus).success && appointmentStatus) agendaParams.set('appointmentStatus', appointmentStatus);
+  if (params.getAll('reportStatus').length === 1 && (reportStatus === 'NONE' || ReportStatusSchema.safeParse(reportStatus).success) && reportStatus) agendaParams.set('reportStatus', reportStatus);
   const agendaHref = `/agenda${agendaParams.size ? `?${agendaParams}` : ''}`;
 
   const [createReport, creation] = useCreateReportMutation();

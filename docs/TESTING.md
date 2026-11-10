@@ -290,3 +290,25 @@ Em2026-11-09, a árvore final passou em uma nova execução integral: **545/545 
 A sequência terminou com erro de uso do comando `check:delivery`, chamado sem o obrigatório `--base-url`; isso ocorreu depois dos testes/gates acima. A prova HTTP/proxy é executada separadamente contra uma stack QA isolada, não contra a demo pública.
 
 Prova HTTP concluída em `drlaudo-release-http-qa`, loopback18080: **3/3 grupos aprovados**, incluindo uploads finitos/streaming bloqueados, headers/cache/fallback/redirect e impossibilidade de burlar quota de login com headers de IP. Imagens API/web e stack saudáveis. PRD strict: **0erros/0avisos**. Essa prova não modifica dados de negócio da demo nem usa sua quota.
+
+### Clareza do resumo — preview local em2026-11-10
+
+Regressão RED: resumo mensal separado não existia. Após ajuste, agenda **63/63** aprovada, incluindo recorte de mês, rascunho cancelado fora da contagem de laudos dos não cancelados e ausência de contagens em erro. Lint, typecheck, arquitetura (250módulos/918dependências), build host/Docker e PRD strict0erros/0avisos aprovados. Não houve nova execução integral de contrato/API/web/E2E por essa mudança de apresentação.
+
+Chromium com API/PostgreSQL reais em8091 confirmou novembro com7agendamentos=5não cancelados+2cancelados; laudos desses5=1publicado+1rascunho+3sem laudo. FiltroAna: mês5total/4não cancelados/1cancelado; linha do tempo7total/6não cancelados/1cancelado; dia10/11 com3total/3não cancelados/0cancelados. A primeira espera visual presumiu incorretamente3não cancelados de Ana no mês; a leitura real confirmou4 com a massa local de meses distintos, sem alterar dados para ajustar a prova. Capturas1440/375/720px mostraram blocos separados e reflow;375/720 sem overflowhorizontal, navegador sem erros. Sem alegar leitor nativo, medição de contraste ou aceite humano.
+
+Somente web do Compose `drlaudo-timeline-preview` reconstruída; API/banco/volume preservados. Disponível em `http://localhost:8091`. Nenhum commit, push, CI remoto ou acesso/deploy na VPS nesta revisão.
+
+**Segunda proposta após rejeição visual:** substituído bloco permanente de seis contagens por frase total/período/cancelados e divulgação progressiva de laudos. Agenda63/63, lint/typecheck/arquitetura e buildDocker aprovados novamente. Chromium confirmou estado inicial recolhido, abrir/fechar comEnter mantendo foco, contagens preservadas e reflow375/720 sem overflow; captura desktop1440 e mobile375, zero erros do navegador. Somente web8091 atualizada; VPS/Git remoto intactos. Aprovação visual continua pendente da usuária.
+
+**Filtros substituem o resumo — decisão posterior da usuária:** removidos contadores/resumo e adicionados Agendamento e Laudo em “Mais filtros”, combinados com paciente e recorte temporal. RED por controle ausente. Execução final pertinente: **198/198** nos arquivos agenda/navegação/laudos; lint aprovado. Typecheck inicialmente rejeitou opção `exact` inexistente na API `getByRole` do novo teste; removida somente a opção redundante (o nome string já é exato), typecheck aprovado, arquitetura250/918 sem violações, buildDocker e PRDstrict0/0 aprovados. Sem nova suíte integral API/contrato/web/E2E.
+
+Chromium em8091 com API/banco reais confirmou Ana+Não cancelados+Sem laudo mostrando só exame10h de10/11; F5 manteve seleção, e retorno do laudo publicado preservou calendário/dia/paciente/situações. Grade respeita as mesmas seleções. Capturas1440/375 e reflow375/720 sem overflow, nenhum erro de navegador. Preview somenteweb reconstruído; sem commit/push/VPS.
+
+**Opção2 do board implementada localmente:** duas faixas, filtros sempre visíveis e etiquetas removíveis com restauração de foco. RED por campos ocultos/etiquetas ausentes; **199/199** testes pertinentes (agenda/navegação/laudos), lint/typecheck/arquitetura250/918, buildDocker e PRDstrict0/0 aprovados. Alterações finais de tipografia/largura passaram novamente pelo buildDocker, sem repetir suítes por CSS.
+
+Chromium real8091 confirmou filtros combinados, F5, retorno de publicado e remoção individual preservando os demais; “Limpar seleção” mantém calendário/data e foca Paciente. Selects44px, ícones centralizados com14px da borda. A primeira inspeção375 cortou “Não cancelados”;14px de fonte sozinho não bastou. Coluna de agendamento ampliada na divisão mobile e campos empilhados abaixo375 resolveram: texto medido106,78px em110px disponíveis a375; em320/720 também coube. Captura final e scrollWidth sem overflow nos três tamanhos, navegador sem erros. Mesmo volume/API/banco, somente web reconstruída; sem Git remoto/VPS. Aceite visual humano permanece separado.
+
+### Publicação dos filtros — validação de2026-11-10
+
+Nova execução na árvore a publicar: **web623/623** e **E2E real41/41** (PostgreSQL QA separado, um worker, zero retries). Lint, typecheck de todos os workspaces, arquitetura250módulos/918dependências, build e PRDstrict0erros/0avisos aprovados. Avisos de chunk>500kB, driverpg e cores do runner permanecem visíveis. Contrato/API não foram reexecutados localmente por não terem mudanças; a esteira remota executa o conjunto completo. Resultados anteriores não são contados como execução fresca.
