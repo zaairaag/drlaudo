@@ -100,6 +100,7 @@ describe('administração de pacientes STAFF pelo router de produto', () => {
   it('valida por contrato antes de HTTP, associa erros e mantém o primeiro campo inválido em foco', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([patient]));
     const { user } = openPatients();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Novo paciente' })).toBeEnabled());
     await user.click(await screen.findByRole('button', { name: 'Novo paciente' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('button', { name: 'Cadastrar paciente' }));
@@ -118,6 +119,7 @@ describe('administração de pacientes STAFF pelo router de produto', () => {
   ])('limites contratuais de %s são associados ao campo sem POST', async (label, value) => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json([patient]));
     const { user } = openPatients();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Novo paciente' })).toBeEnabled());
     await user.click(await screen.findByRole('button', { name: 'Novo paciente' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Nome'), createdPatient.name);
@@ -135,6 +137,7 @@ describe('administração de pacientes STAFF pelo router de produto', () => {
     const pending = Promise.withResolvers<Response>();
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => init?.method === 'POST' ? pending.promise : Response.json([patient]));
     const { user } = openPatients();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Novo paciente' })).toBeEnabled());
     await user.click(await screen.findByRole('button', { name: 'Novo paciente' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Nome'), createdPatient.name);
@@ -155,6 +158,7 @@ describe('administração de pacientes STAFF pelo router de produto', () => {
       ? Response.json({ error: { code: 'EMAIL_TAKEN', message: 'Este e-mail já está cadastrado.' } }, { status: 409 })
       : Response.json([patient]));
     const { user } = openPatients();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Novo paciente' })).toBeEnabled());
     await user.click(await screen.findByRole('button', { name: 'Novo paciente' }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText('Nome'), createdPatient.name);
